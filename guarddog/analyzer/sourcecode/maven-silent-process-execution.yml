@@ -1,0 +1,19 @@
+rules:
+  - id: maven-silent-process-execution
+    message: This package is silently executing an external binary, redirecting stdout, stderr and stdin to /dev/null
+    metadata:
+      description: Identify when a package silently executes an executable
+    patterns: 
+        - pattern-inside: |
+            $B. ... .redirectOutput(ProcessBuilder.Redirect.DISCARD). ...;
+            ...
+        - pattern-inside: |
+            $B. ... .redirectError(ProcessBuilder.Redirect.DISCARD). ...;
+            ...
+        - pattern-inside: |
+            $B. ... .redirectInput(ProcessBuilder.Redirect.DISCARD). ...;
+            ...
+        - pattern: $B. ... .start()
+    languages:
+      - java
+    severity: WARNING
