@@ -94,6 +94,52 @@ public class Steganography {
             }
     
             System.out.println("Test complete");
+
+
         }
+
+
+        // stack overflow example
+        public static void steg(String[] args) throws Exception {
+            try {
+                BufferedImage coverImageText = ImageIO.read(new File("originalPic.png"));       
+                String s = "Java is a popular programming language, created in 1995.";
+                // ruleid: maven-steganography
+                coverImageText = Steganography.embedText(coverImageText, s);                                // embed the secret information
+                Steganography.extractText(ImageIO.read(new File("textEmbedded.png")), s.length()); // extract the secret information
+            } catch(IOException e) {        
+                System.out.print("Error: " + e);
+            }   
+        }
+
+        // github example
+        public void saveWallet(){
+            try {
+    
+                //writes the data to the stegno file
+                //finally, move the file to the output directory
+                // ruleid: maven-steganography
+                Steganography a = new Steganography(this.file, new File(this.directory.getAbsolutePath()+"\\Wallet_Image_"+this.file.getName()));
+                a.setText(this.EncryptedAddresses);
+                a.saveImage();
+    
+                //finall, create JSON file with all bitcoin addresses format { "0":"dgdgs", "1":"sdfsdf" }
+                String json = this.file.getName().substring(0, this.file.getName().lastIndexOf('.')) + ".json";
+                new OutputJSON(this.address.toString(), new File(this.directory.getAbsolutePath()+"\\Wallet_Image_"+json)).export();
+    
+    
+                //Clear static setting, for new addresses.. if not, it will contain previous addresses
+                this.address.delete(0, this.address.length());
+                EncryptedAddresses = "";
+    
+            } catch (Exception e){
+    
+                System.out.print(e);
+    
+            }
+    
+        }
+         
+
     
 }

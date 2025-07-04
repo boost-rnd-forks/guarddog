@@ -5,11 +5,22 @@ rules:
     message: This package is dynamically executing hidden data from an image
     metadata:
       description: Identify when a package retrieves hidden data from an image and executes it
-    patterns:
-      - pattern-inside: |
-          import io.github.galliumdata.adumbra;
-          ...
-          $ENC = new Encoder(...);
-          ...
-      - pattern: $ENC.encode(...)
+    pattern-either:
+      - patterns: 
+        # adumbra library
+        - pattern-inside: |
+            import io.github.galliumdata.adumbra;
+            ...
+            $ENC = new Encoder(...);
+            ...
+        - pattern: $ENC.encode(...)
+       # tigerlyb Steganography-in-Java 
+      - patterns: 
+        - pattern: Steganography.$EMBED(...)
+        - metavariable-regex:
+            metavariable: $EMBED
+            regex: embed.*
+      # ImageHandle.Steganography
+      - pattern: new Steganography(...)
+
     severity: WARNING
