@@ -20,7 +20,14 @@ rules:
         - metavariable-regex:
             metavariable: $EMBED
             regex: embed.*
-      # ImageHandle.Steganography
-      - pattern: new Steganography(...)
+      # ImageHandle.Steganography and other custom classes
+      - patterns: 
+        - pattern: new $STEG(...)
+        - metavariable-regex:
+            metavariable: $STEG
+            regex: (?i).*Steganography.*
+      # openstego
+      - pattern-regex: (['"`])java\s+\-jar.*\\openstego\.jar\s+embed
+      
 
     severity: WARNING

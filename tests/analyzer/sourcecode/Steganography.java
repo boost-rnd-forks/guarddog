@@ -140,6 +140,27 @@ public class Steganography {
     
         }
          
+        // github example
+        private void Steganography2 {
+            public static void main(String[] args) {
+                try {
+                    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                // ruleid: maven-steganography
+                SwingUtilities.invokeLater(() -> new SteganographyGUI().setVisible(true));
+            }
+        }
+
+        // homemade example
+        // ruleid: maven-steganography
+        Runtime.getRuntime().exec("java -jar prog\openstego.jar embed -a randomlsb -mf secret.txt -cf wallpaper.png -sf test.png");
+        // ruleid: maven-steganography
+        String cmd = "java -jar code\openstego.jar embed -a randomlsb -mf secret.txt -cf wallpaper.png -sf test.png";
+        Runtime.getRuntime().exec(cmd);
+ 
+
 
     
 }
