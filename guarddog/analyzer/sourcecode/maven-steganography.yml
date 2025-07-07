@@ -1,0 +1,33 @@
+rules:
+  - id: maven-steganography
+    languages:
+      - java
+    message: This package is dynamically executing hidden data from an image
+    metadata:
+      description: Identify when a package retrieves hidden data from an image and executes it
+    pattern-either:
+      - patterns: 
+        # adumbra library
+        - pattern-inside: |
+            import io.github.galliumdata.adumbra;
+            ...
+            $ENC = new Encoder(...);
+            ...
+        - pattern: $ENC.encode(...)
+       # tigerlyb Steganography-in-Java 
+      - patterns: 
+        - pattern: Steganography.$EMBED(...)
+        - metavariable-regex:
+            metavariable: $EMBED
+            regex: embed.*
+      # ImageHandle.Steganography and other custom classes
+      - patterns: 
+        - pattern: new $STEG(...)
+        - metavariable-regex:
+            metavariable: $STEG
+            regex: (?i).*Steganography.*
+      # openstego
+      - pattern-regex: (['"`])java\s+\-jar.*\\openstego\.jar\s+embed
+      
+
+    severity: WARNING
