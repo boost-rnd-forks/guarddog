@@ -1,0 +1,72 @@
+rules:
+  - id: java-exec-base64
+    languages:
+      - java
+    message: |
+      This Java package contains code that decodes a Base64 string and passes it to a potentially dangerous execution function.
+      This is a common pattern in obfuscated or malicious code to hide payloads from static analysis.
+    metadata:
+      description: Identify Base64-decoded content being passed to execution functions in Java
+    severity: WARNING
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+        - pattern: Base64. ... .decode(...)
+        - pattern: Base64.decodeBase64(...)
+        - pattern: DatatypeConverter.parseBase64Binary(...)
+        - patterns: 
+          - pattern-inside: |
+              $DEC = <... Base64.getDecoder() ...>;
+              ...
+          - pattern: $DEC.decode(...)
+        - patterns: 
+          - pattern-inside: |
+              $DEC = <... new Base64() ...> ;
+              ...
+          - pattern: $DEC.decode(...)
+
+        # bytes decoded in a file 
+        - patterns: 
+          - pattern: Files.write($DEST_PATH, $DATA)
+          - metavariable-pattern:
+              metavariable: $DATA
+              patterns:
+                - pattern: Base64. ... .decode(...)
+                - pattern: Base64.decodeBase64(...)
+                - pattern: DatatypeConverter.parseBase64Binary(...)
+
+        # bytes passed in a file 
+        - pattern: |
+            $DEC = <... Base64. ... .decode(...) ...> ;
+            ...
+            Files.write($DEST_PATH, $DEC);
+        - pattern: |
+            $DEC = <... Base64.decodeBase64(...) ...> ;
+            ...
+            Files.write($DEST_PATH, $DEC);
+        - pattern: |
+            $DEC = <... DatatypeConverter.parseBase64Binary(...) ...> ;
+            ...
+            Files.write($DEST_PATH, $DEC);
+        - pattern: |
+            $DEC = <... Base64.getDecoder() ...>;
+            ...
+            $DATA = <... $DEC.decode(...) ...> ;
+            ...
+            Files.write($DEST_PATH, $DATA);
+        - pattern: |
+            $DEC = new Base64();
+            ...
+            $DATA = <... $DEC.decode(...) ...>;
+            ...
+            Files.write($DEST_PATH, $DATA);
+        
+
+    pattern-sinks:
+      - pattern-either:
+          - pattern: ProcessBuilder(...)
+          - pattern: Runtime.getRuntime().exec(...)
+          - pattern: $ENGINE.eval(...)
+          # reflected exec
+          - pattern: $M.invoke(...)
+
