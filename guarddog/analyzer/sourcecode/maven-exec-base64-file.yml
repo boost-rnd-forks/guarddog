@@ -28,6 +28,22 @@ rules:
         - pattern-inside: |
             $DEC = <... $CRYPTO.decrypt(...) ...> ;
             ...
+        - pattern-inside: | 
+            $DEC = <... Integer.parseInt(...) ...>;
+            ...
+        - pattern-inside: | 
+            $DEC = <... HexFormat.of().parseHex(...) ...> ;
+            ...
+        - pattern-inside: | 
+            $DEC = <... Hex.decodeHex(...) ...>;
+            ...
+        - patterns: 
+          - pattern-inside: | 
+              $DEC = <... $DECODE(...) ...>;
+              ...
+          - metavariable-regex: 
+              metavariable: $DECODE
+              regex: (?i)(Base64|Hex|decode)
       
       - pattern-inside: |
           Files.write(<... $FILE ...>, <... $DEC ...>);

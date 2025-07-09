@@ -18,6 +18,14 @@ rules:
         - pattern: |
             "...".getBytes(...)
         - pattern: $CRYPTO.decrypt(...)
+        - pattern: Integer.parseInt(...)
+        - pattern: HexFormat.of().parseHex(...)
+        - pattern: Hex.decodeHex(...)
+        - patterns: 
+          - pattern: $DECODE(...)
+          - metavariable-regex: 
+              metavariable: $DECODE
+              regex: (?i)(Base64|Hex|decode)
 
         # bytes decoded in a file 
         - patterns: 
@@ -32,6 +40,14 @@ rules:
                 - pattern: |
                     "...".getBytes(...)
                 - pattern: $CRYPTO.decrypt(...)
+                - pattern: Integer.parseInt(...)
+                - pattern: HexFormat.of().parseHex(...)
+                - pattern: Hex.decodeHex(...)
+                - patterns: 
+                  - pattern: $DECODE(...)
+                  - metavariable-regex: 
+                      metavariable: $DECODE
+                      regex: (?i)(Base64|Hex|decode)
         
 
     pattern-sinks:
