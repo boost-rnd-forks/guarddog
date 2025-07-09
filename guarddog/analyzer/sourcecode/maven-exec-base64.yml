@@ -11,22 +11,13 @@ rules:
     mode: taint
     pattern-sources:
       - pattern-either:
-        - pattern: Base64. ... .decode(...)
+        - pattern: $DEC. ... .decode(...)
         - pattern: Base64.decodeBase64(...)
         - pattern: DatatypeConverter.parseBase64Binary(...)
+        - pattern: $BASE64.decodeBuffer(...)
         - pattern: |
             "...".getBytes(...)
         - pattern: $CRYPTO.decrypt(...)
-        - patterns: 
-          - pattern-inside: |
-              $DEC = <... Base64.getDecoder() ...>;
-              ...
-          - pattern: $DEC.decode(...)
-        - patterns: 
-          - pattern-inside: |
-              $DEC = <... new Base64() ...> ;
-              ...
-          - pattern: $DEC.decode(...)
 
         # bytes decoded in a file 
         - patterns: 
@@ -34,35 +25,13 @@ rules:
           - metavariable-pattern:
               metavariable: $DATA
               patterns:
-                - pattern: Base64. ... .decode(...)
+                - pattern: $DEC. ... .decode(...)
                 - pattern: Base64.decodeBase64(...)
                 - pattern: DatatypeConverter.parseBase64Binary(...)
-
-        # bytes passed in a file 
-        - pattern: |
-            $DEC = <... Base64. ... .decode(...) ...> ;
-            ...
-            Files.write($DEST_PATH, $DEC);
-        - pattern: |
-            $DEC = <... Base64.decodeBase64(...) ...> ;
-            ...
-            Files.write($DEST_PATH, $DEC);
-        - pattern: |
-            $DEC = <... DatatypeConverter.parseBase64Binary(...) ...> ;
-            ...
-            Files.write($DEST_PATH, $DEC);
-        - pattern: |
-            $DEC = <... Base64.getDecoder() ...>;
-            ...
-            $DATA = <... $DEC.decode(...) ...> ;
-            ...
-            Files.write($DEST_PATH, $DATA);
-        - pattern: |
-            $DEC = new Base64();
-            ...
-            $DATA = <... $DEC.decode(...) ...>;
-            ...
-            Files.write($DEST_PATH, $DATA);
+                - pattern: $BASE64.decodeBuffer(...)
+                - pattern: |
+                    "...".getBytes(...)
+                - pattern: $CRYPTO.decrypt(...)
         
 
     pattern-sinks:
@@ -72,4 +41,11 @@ rules:
           - pattern: $ENGINE.eval(...)
           # reflected exec
           - pattern: $M.invoke(...)
+          - pattern: $COMPILER.run(...)
+          - pattern: defineClass(...)
+          - patterns: 
+            - pattern: $EXEC(...)
+            - metavariable-regex:
+                metavariable: $EXEC
+                regex: (?i).*exec.*
 
