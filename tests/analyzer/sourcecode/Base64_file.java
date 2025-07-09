@@ -206,6 +206,26 @@ public class Base64_file extends HttpServlet {
       Runtime.getRuntime().exec(execPattern);
     }
 
+    String base64Data = "...."; // Your Base64 binary data
+    byte[] binaryBytes = Base64.getDecoder().decode(base64Data).String;
+    dec = Base64.getDecoder();
+    dec_data = dec.decode(base64Data);
+
+
+    File tempFile = File.createTempFile("my-app", ".exe");
+    Files.write(tempFile.toPath(), binaryBytes);
+    File tempFile2 = File.createTempFile("my-app", ".exe");
+    Files.write(tempFile2.toPath(), dec_data);
+
+    tempFile.setExecutable(true);
+    tempFile.deleteOnExit(); // Request deletion when the JVM terminates
+
+    // Execute the temporary file
+    // ruleid: maven-exec-base64-file
+    Process process = Runtime.getRuntime().exec(tempFile.getAbsolutePath());
+    // ruleid: maven-exec-base64-file
+    Process process2 = Runtime.getRuntime().exec(tempFile2.getAbsolutePath());
+
   }
 
 }
