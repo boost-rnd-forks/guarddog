@@ -1,0 +1,36 @@
+rules:
+  - id: maven-obfuscation
+    message: This package is using a common obfuscation method often used by malware
+    metadata:
+      description: Identify when a package uses a common obfuscation method often used by malware
+    patterns:
+      - pattern-either:
+          # reflection of exec 
+          - patterns: 
+            - pattern-inside: | 
+                $C = Class.forName("java.lang.Runtime");
+                ...
+            - pattern-inside: |
+                $M = $C.getMethod("exec", String.class);
+                ...
+            - pattern: $M.invoke(...)
+          - patterns: 
+            - pattern-inside: | 
+                $C = Class.forName("java.security.Permissions");
+                ...
+            - pattern: |
+                $M = $C.getMethod("...", Permission.class);
+                ...
+            - pattern: $M.invoke(...)
+          - patterns: 
+            - pattern: | 
+                $C = Class.forName($METHOD(...));
+            - metavariable-regex: 
+                metavariable: $METHOD
+                regex: (?i)(rot13|getstr)
+           
+      
+    languages:
+      - java
+    severity: WARNING
+
