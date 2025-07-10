@@ -1,0 +1,83 @@
+rules:
+  - id: maven-exec-base64
+    languages:
+      - java
+    message: |
+      This Java package contains code that decodes a Base64 string and passes it to a potentially dangerous execution function.
+      This is a common pattern in obfuscated or malicious code to hide payloads from static analysis.
+    metadata:
+      description: Identify Base64-decoded content being passed to execution functions in Java
+    severity: WARNING
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+        - pattern: $DEC. ... .decode(...)
+        - pattern: Base64.decodeBase64(...)
+        - pattern: DatatypeConverter.parseBase64Binary(...)
+        - pattern: $BASE64.decodeBuffer(...)
+        - pattern: |
+            "...".getBytes(...)
+        - pattern: $CRYPTO.decrypt(...)
+        - pattern: Integer.parseInt(...)
+        - pattern: HexFormat.of().parseHex(...)
+        - pattern: Hex.decodeHex(...)
+        - patterns: 
+          - pattern: $DECODE(...)
+          - metavariable-regex: 
+              metavariable: $DECODE
+              regex: (?i)(Base64|Hex|decode|rot13|unicode|octal)
+        # unicode payload
+        - pattern-regex: (["'`].*\\u[0-9a-fA-F]{4}.*["'`])
+        - pattern: Character.toString(...)
+        - pattern: new StringBuilder(...)
+        - pattern: char[] $CHAR_ARRAY = {...}
+        - pattern: $STRING.reverse(...)
+        - pattern: $STRING.replaceAll(...)
+        
+
+        # bytes decoded in a file 
+        - patterns: 
+          - pattern: Files.write($DEST_PATH, $DATA)
+          - metavariable-pattern:
+              metavariable: $DATA
+              patterns:
+                - pattern: $DEC. ... .decode(...)
+                - pattern: Base64.decodeBase64(...)
+                - pattern: DatatypeConverter.parseBase64Binary(...)
+                - pattern: $BASE64.decodeBuffer(...)
+                - pattern: |
+                    "...".getBytes(...)
+                - pattern: $CRYPTO.decrypt(...)
+                - pattern: Integer.parseInt(...)
+                - pattern: HexFormat.of().parseHex(...)
+                - pattern: Hex.decodeHex(...)
+                - patterns: 
+                  - pattern: $DECODE(...)
+                  - metavariable-regex: 
+                      metavariable: $DECODE
+                      regex: (?i)(Base64|Hex|decode|rot13|unicode|octal)
+                - pattern-regex: (["'`].*\\u[0-9a-fA-F]{4}.*["'`])
+                - pattern: Character.toString(...)
+                - pattern: new StringBuilder(...)
+                - pattern: char[] $CHAR_ARRAY = {...}
+                - pattern: $STRING.reverse(...)
+                - pattern: $STRING.replaceAll(...)
+        
+
+    pattern-sinks:
+      - pattern-either:
+          - pattern: ProcessBuilder(...)
+          - pattern: Runtime.getRuntime().exec(...)
+          - pattern: $ENGINE.eval(...)
+          # reflected exec
+          - pattern: $M.invoke(...)
+          - pattern: $COMPILER.run(...)
+          - pattern: defineClass(...)
+          - pattern: Class.forName(...)
+          - pattern: $C.getMethod(...)
+          - patterns: 
+            - pattern: $EXEC(...)
+            - metavariable-regex:
+                metavariable: $EXEC
+                regex: (?i).*exec.*
+
