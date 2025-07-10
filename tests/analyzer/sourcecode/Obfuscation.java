@@ -28,6 +28,8 @@ public class Obfuscation{
         String str2 = "wnin.ynat.FrphevglZnantre";
         // ruleid: maven-obfuscation
         Class<?> c3 = Class.forName(rot13(str2));
+        // ok: maven-obfuscation
+        Class<?> c3 = Class.forName("name");
         System.out.println("Loaded class via ROT13: " + c3.getName());
     }
 
@@ -43,6 +45,19 @@ public class Obfuscation{
 
     public static String rot13(String s) {
         StringBuffer sb = new StringBuffer();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= 'a' && c <= 'm') c += 13;
+            else if (c >= 'A' && c <= 'M') c += 13;
+            else if (c >= 'n' && c <= 'z') c -= 13;
+            else if (c >= 'N' && c <= 'Z') c -= 13;
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    public static String a(String s) {
+        StringBuffer b = new StringBuffer();
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             if (c >= 'a' && c <= 'm') c += 13;

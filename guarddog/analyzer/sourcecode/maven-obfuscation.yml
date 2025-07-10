@@ -5,29 +5,33 @@ rules:
       description: Identify when a package uses a common obfuscation method often used by malware
     patterns:
       - pattern-either:
-          # reflection of exec 
+          # class reflection  
           - patterns: 
             - pattern-inside: | 
-                $C = Class.forName("java.lang.Runtime");
+                $C = Class.forName("$CLASS_NAME");
                 ...
             - pattern-inside: |
-                $M = $C.getMethod("exec", String.class);
+                $M = $C.getMethod($METHOD, ...);
                 ...
             - pattern: $M.invoke(...)
+            - metavariable-regex: 
+                metavariable: $CLASS_NAME
+                regex: (?i)(java\.lang\.(Runtime|ProcessBuilder|ClassLoader|reflect\.Method|Class|reflect\.Field|System|management\.RuntimeMXBean)|javax\.script\.ScriptEngineManager|javax\.tools\.JavaCompiler|java\.util\.Properties|java.io.File|java.nio.file.Files|java.net.Socket|HttpURLConnection|java.security.Permissions)
+              
           - patterns: 
             - pattern-inside: | 
-                $C = Class.forName("java.security.Permissions");
+                $C = Class.forName("sun.misc.Unsafe");
                 ...
             - pattern: |
-                $M = $C.getMethod("...", Permission.class);
+                $M = $C.getMethod("...", ...);
                 ...
             - pattern: $M.invoke(...)
-          - patterns: 
-            - pattern: | 
-                $C = Class.forName($METHOD(...));
-            - metavariable-regex: 
-                metavariable: $METHOD
-                regex: (?i)(rot13|getstr)
+
+          - pattern: | 
+              $C = Class.forName($METHOD(...));
+            
+        
+            
            
       
     languages:
