@@ -292,5 +292,21 @@ private void getConnection() {
 private void ticking(String command) {
   // stub
 }
+// ok: maven-exec-base64
+private static final Pattern a = Pattern.compile("(?i)\\u00A7[0-9A-FK-OR]");
+  
+  public static String a(int ticks)
+  {
+    int i = ticks / 20;
+    int j = i / 60;
+    i %= 60;
+    // ruleid: maven-exec-base64
+    Runtime.getRuntime().exec('\u0041','\u0042\u0043\u0044');
+    // ruleid: maven-exec-base64
+    Runtime.getRuntime().exec(String({'\u0041','\u0042','\u0043','\u0044'}));
+      // ok: maven-exec-base64
+    PrintWriter pw = new PrintWriter(new FileOutputStream("C:\\Users\\pc\\git\\Retry"));
+    return j + ":" + i;
+  }
 
 }

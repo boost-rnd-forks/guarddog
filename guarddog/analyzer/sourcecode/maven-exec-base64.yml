@@ -25,7 +25,10 @@ rules:
           - pattern: $DECODE(...)
           - metavariable-regex: 
               metavariable: $DECODE
-              regex: (?i)(Base64|Hex|decode)
+              regex: (?i)(Base64|Hex|decode|rot13|unicode|octal)
+        # unicode payload
+        - pattern-regex: (["'`].*\\u[0-9a-fA-F]{4}.*["'`])
+        
 
         # bytes decoded in a file 
         - patterns: 
