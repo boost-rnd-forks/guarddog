@@ -309,4 +309,12 @@ private static final Pattern a = Pattern.compile("(?i)\\u00A7[0-9A-FK-OR]");
     return j + ":" + i;
   }
 
+  private static void dynamic_class(){
+    String hexString = "fd00000aa8660b5b010006acdc0100000101000100010000";   
+  // ruleid: maven-exec-base64
+  Class<?> c3 = Class.forName(rot13(str2));
+  // ruleid: maven-exec-base64
+  Method m = c3.getMethod(Hex.decodeHex(hexString.toCharArray()), Permission.class);
+  }
+
 }

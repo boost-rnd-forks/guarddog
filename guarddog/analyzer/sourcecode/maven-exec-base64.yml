@@ -28,6 +28,11 @@ rules:
               regex: (?i)(Base64|Hex|decode|rot13|unicode|octal)
         # unicode payload
         - pattern-regex: (["'`].*\\u[0-9a-fA-F]{4}.*["'`])
+        - pattern: Character.toString(...)
+        - pattern: new StringBuilder(...)
+        - pattern: char[] $CHAR_ARRAY = {...}
+        - pattern: $STRING.reverse(...)
+        - pattern: $STRING.replaceAll(...)
         
 
         # bytes decoded in a file 
@@ -50,7 +55,13 @@ rules:
                   - pattern: $DECODE(...)
                   - metavariable-regex: 
                       metavariable: $DECODE
-                      regex: (?i)(Base64|Hex|decode)
+                      regex: (?i)(Base64|Hex|decode|rot13|unicode|octal)
+                - pattern-regex: (["'`].*\\u[0-9a-fA-F]{4}.*["'`])
+                - pattern: Character.toString(...)
+                - pattern: new StringBuilder(...)
+                - pattern: char[] $CHAR_ARRAY = {...}
+                - pattern: $STRING.reverse(...)
+                - pattern: $STRING.replaceAll(...)
         
 
     pattern-sinks:
@@ -62,6 +73,8 @@ rules:
           - pattern: $M.invoke(...)
           - pattern: $COMPILER.run(...)
           - pattern: defineClass(...)
+          - pattern: Class.forName(...)
+          - pattern: $C.getMethod(...)
           - patterns: 
             - pattern: $EXEC(...)
             - metavariable-regex:

@@ -43,7 +43,29 @@ rules:
               ...
           - metavariable-regex: 
               metavariable: $DECODE
-              regex: (?i)(Base64|Hex|decode)
+              regex: (?i)(Base64|Hex|decode|rot13|unicode|octal)
+        - pattern-inside: | 
+            $DEC = <... Character.toString(...) ...>;
+            ...
+        - pattern-inside: | 
+            $DEC = <... new StringBuilder(...) ...>;
+            ...
+        - pattern-inside: | 
+            char[] $DEC = {...} ;
+            ...
+        - pattern-inside: | 
+            $DEC = <... $STRING.reverse(...) ...>;
+            ...
+        - pattern-inside: | 
+            $DEC = <... $STRING.replaceAll(...) ...>;
+            ...
+        - patterns: 
+          - pattern-inside: | 
+              $DEC = <... $UNICODE ...>;
+              ...
+          - metavariable-regex: 
+              metavariable: $UNICODE
+              regex: (["'`].*\\u[0-9a-fA-F]{4}.*["'`])
       
       - pattern-inside: |
           Files.write(<... $FILE ...>, <... $DEC ...>);
