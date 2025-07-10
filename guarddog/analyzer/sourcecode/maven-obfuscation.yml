@@ -1,11 +1,15 @@
 rules:
   - id: maven-obfuscation
-    message: This package is using a common obfuscation method often used by malware
+    message: |
+       This package is using a common obfuscation method often used by malware
+       Either is dynamically loading senstive methods from classes and executing them using invoke(...)
+       Or is dynamically calling the Class sun.misc.Unsafe
+       Or sketchy variable/methods/class names starting with _0x
     metadata:
       description: Identify when a package uses a common obfuscation method often used by malware
     patterns:
       - pattern-either:
-          # class reflection  
+          # Dynamically loading sensitive classes 
           - patterns: 
             - pattern-inside: | 
                 $C = Class.forName("$CLASS_NAME");
@@ -17,7 +21,15 @@ rules:
             - metavariable-regex: 
                 metavariable: $CLASS_NAME
                 regex: (?i)(java\.lang\.(Runtime|ProcessBuilder|ClassLoader|reflect\.Method|Class|reflect\.Field|System|management\.RuntimeMXBean)|javax\.script\.ScriptEngineManager|javax\.tools\.JavaCompiler|java\.util\.Properties|java.io.File|java.nio.file.Files|java.net.Socket|HttpURLConnection|java.security.Permissions)
-              
+          # dynamically loading a class by resolving dynamically the name of the wanted class 
+          - patterns: 
+            - pattern: | 
+                Class.forName("$CLASS_NAME").getMethod($METHOD, ...).invoke(...)
+            - metavariable-regex: 
+                metavariable: $CLASS_NAME
+                regex: (?i)(java\.lang\.(Runtime|ProcessBuilder|ClassLoader|reflect\.Method|Class|reflect\.Field|System|management\.RuntimeMXBean)|javax\.script\.ScriptEngineManager|javax\.tools\.JavaCompiler|java\.util\.Properties|java.io.File|java.nio.file.Files|java.net.Socket|HttpURLConnection|java.security.Permissions)
+                  
+          # Detecting usage of sun.misc.Unsafe
           - patterns: 
             - pattern-inside: | 
                 $C = Class.forName("sun.misc.Unsafe");
@@ -26,11 +38,26 @@ rules:
                 $M = $C.getMethod("...", ...);
                 ...
             - pattern: $M.invoke(...)
+          - pattern: Class.forName("sun.misc.Unsafe").getMethod(...).invoke(...)
+          - pattern: import sun.misc.Unsafe;
+          
 
           - pattern: | 
               $C = Class.forName($METHOD(...));
-            
-        
+
+          - pattern: for(;;){...}
+
+          - patterns:
+            - pattern-either: 
+              - pattern: $TYPE $NAME(...)
+              - pattern: class $NAME{...}
+              - pattern: $NAME = ...;
+            - metavariable-regex:
+                metavariable: $NAME
+                regex: _0x[a-zA-Z0-9\s]*
+  
+
+          
             
            
       

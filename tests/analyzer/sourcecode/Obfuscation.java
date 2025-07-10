@@ -69,5 +69,121 @@ public class Obfuscation{
         return sb.toString();
     }
 
+    private Class22() {
+        String var10000 = "YOUR_MOTHER_IS_GAY_ION_ON_TOP_COPE";
+        super();
+     }
+
+     public static void obf(String[] args) throws Exception {
+		
+
+        Scanner reader = new Scanner(System.in);  
+        System.out.println("Enter Bitcoin Address: ");
+        String GivenAddress = reader.nextLine();	
+        PrintWriter writer = new PrintWriter(new FileWriter("foundaddress.txt"));
+        // ruleid: maven-obfuscation
+        for(;;)	{
+        String net = "prod";
+        if (args.length >= 1 && (args[0].equals("test") || args[0].equals("prod"))) {       
+            net = args[0];
+            System.out.println("Using " + net + " network.");
+        }
+        ECKey key = new ECKey();
+        final NetworkParameters netParams;
+        if (net.equals("prod")) {
+            netParams = NetworkParameters.prodNet();
+            } else {
+            netParams = NetworkParameters.testNet();
+            }
+        Address addressFromKey = key.toAddress(netParams);
+        String privatekey = key.getPrivateKeyAsHex();
+        DumpedPrivateKey privatekey2 = key.getPrivateKeyEncoded(netParams);
+
+            
+
+            if(GivenAddress.equals(addressFromKey)) {
+                writer.print(addressFromKey + " " + privatekey2);
+                writer.flush();
+    System.out.println("Using " + net + " network, Generated address:\n" + addressFromKey + " da private keyz: " + privatekey + " " + privatekey2);
+            break;
+                                                    } 
+            
+                }
+                    reader.close(); writer.flush(); writer.close();
+}
+    public static String encodeUpper(byte abyte) {
+        return new String(new char[]{
+            UPPER_DIGITS[(0xFF & abyte) >>> 4], UPPER_DIGITS[0x0F & abyte]});
+    }
+
+    enum TlvTags
+{
+	NonUinAccount(0x0004),
+	Uin(0x0005),
+	TGTGT(0x0006),
+	TGT(0x0007),
+	TimeZone(0x0008),
+	ErrorInfo(0x000A),
+	PingRedirect(0x000C),
+	_0x000D(0x000D),
+	_0x0014(0x0014),
+	ComputerGuid(0x0015),
+	ClientInfo(0x0017),
+	Ping(0x0018),
+	GTKeyTGTGTCryptedData(0x001A),
+	GTKey_TGTGT(0x001E),
+	DeviceID(0x001F),
+	LocalIP(0x002D),
+	_0x002F(0x002F),
+	QdData(0x0032),
+	_0x0033(0x0033),
+	LoginReason(0x0036),
+	ErrorCode(0x0100),
+	Official(0x0102),
+	SID(0x0103),
+	_0x0104(0x0104),
+	m_vec0x12c(0x0105),
+	TicketInfo(0x0107),
+	AccountBasicInfo(0x0108),
+	_ddReply(0x0109),
+	QDLoginFlag(0x010B),
+	_0x010C(0x010C),
+	SigLastLoginInfo(0x010D),
+	_0x010E(0x010E),
+	SigPic(0x0110),
+	SigIP2(0x0112),
+	DHParams(0x0114),
+	PacketMd5(0x0115),
+	Ping_Strategy(0x0309),
+	ComputerName(0x030F),
+	ServerAddress(0x0310),
+	Misc_Flag(0x0312),
+	GUID_Ex(0x0313),
+        // ok: maven-obfuscation
+	_0x0404(0x0404),
+	_0x0508(0x0508),
+	_0x050C(0x050C);
+}
+
+// ruleid: maven-obfuscation
+public static String _0xjhkbfd(byte abyte) {
+        return new String(new char[]{
+            UPPER_DIGITS[(0xFF & abyte) >>> 4], UPPER_DIGITS[0x0F & abyte]});
+}
+
+// ok: maven-obfuscation
+private static final long BROADCAST_SEMICOLON = 0x3B3B3B3B3B3B3B3BL;
+private static final long BROADCAST_0x01 = 0x0101010101010101L;
+private static final long BROADCAST_0x80 = 0x8080808080808080L;
+// ruleid: maven-obfuscation
+private static final long _0xjlfwBROADCAST_0x80 = 0x8080808080808080L;
+
+// ruleid: maven-obfuscation
+private class _0xvfghjus{
+    String hexString = "fd00000aa8660b5b010006acdc0100000101000100010000";    
+    byte[] bytes = Hex.decodeHex(hexString.toCharArray());
+    System.out.println(new String(bytes, "UTF-8"));
+}
+
 
 }
