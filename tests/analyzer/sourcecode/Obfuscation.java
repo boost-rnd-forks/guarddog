@@ -1,5 +1,10 @@
-
-
+import java.io.FileWriter;
+import java.io.PrintWriter;
+import java.lang.reflect.Method;
+import java.security.AllPermission;
+import java.security.Permissions;
+import java.security.interfaces.ECKey;
+import java.util.Scanner;
 
 public class Obfuscation{
     String hexString = "fd00000aa8660b5b010006acdc0100000101000100010000";    
@@ -112,6 +117,7 @@ public class Obfuscation{
                     reader.close(); writer.flush(); writer.close();
 }
     public static String encodeUpper(byte abyte) {
+        // ruleid: maven-obfuscation
         return new String(new char[]{
             UPPER_DIGITS[(0xFF & abyte) >>> 4], UPPER_DIGITS[0x0F & abyte]});
     }
@@ -167,6 +173,7 @@ public class Obfuscation{
 
 // ruleid: maven-obfuscation
 public static String _0xjhkbfd(byte abyte) {
+        // ruleid: maven-obfuscation
         return new String(new char[]{
             UPPER_DIGITS[(0xFF & abyte) >>> 4], UPPER_DIGITS[0x0F & abyte]});
 }
@@ -185,5 +192,10 @@ private class _0xvfghjus{
     System.out.println(new String(bytes, "UTF-8"));
 }
 
+public static String encode(byte abyte) {
+    // ruleid: maven-obfuscation
+    return new String(new char[]{
+        DIGITS[(0xFF & abyte) >>> 4], DIGITS[0x0F & abyte]});
+  }
 
 }

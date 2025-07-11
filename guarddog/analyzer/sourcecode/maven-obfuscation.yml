@@ -46,6 +46,7 @@ rules:
               $C = Class.forName($METHOD(...));
 
           - pattern: for(;;){...}
+          - pattern: new String(new char[]{...})
 
           - patterns:
             - pattern-either: 
