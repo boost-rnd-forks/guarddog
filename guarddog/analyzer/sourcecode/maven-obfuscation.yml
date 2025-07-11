@@ -20,14 +20,14 @@ rules:
             - pattern: $M.invoke(...)
             - metavariable-regex: 
                 metavariable: $CLASS_NAME
-                regex: (?i)(java\.lang\.(Runtime|ProcessBuilder|ClassLoader|reflect\.Method|Class|reflect\.Field|System|management\.RuntimeMXBean)|javax\.script\.ScriptEngineManager|javax\.tools\.JavaCompiler|java\.util\.Properties|java.io.File|java.nio.file.Files|java.net.Socket|HttpURLConnection|java.security.Permissions)
+                regex: (?i)(java\.lang\.(Runtime|ProcessBuilder|ClassLoader|reflect\.Method|Class|reflect\.Field|System|management\.RuntimeMXBean)|javax\.script\.ScriptEngineManager|javax\.tools\.JavaCompiler|java\.util\.Properties|java.io.File|java.nio.file.Files|java.net.Socket|HttpURLConnection|java.security.Permissions|loadLibrary)
           # dynamically loading a class by resolving dynamically the name of the wanted class 
           - patterns: 
             - pattern: | 
                 Class.forName("$CLASS_NAME").getMethod($METHOD, ...).invoke(...)
             - metavariable-regex: 
                 metavariable: $CLASS_NAME
-                regex: (?i)(java\.lang\.(Runtime|ProcessBuilder|ClassLoader|reflect\.Method|Class|reflect\.Field|System|management\.RuntimeMXBean)|javax\.script\.ScriptEngineManager|javax\.tools\.JavaCompiler|java\.util\.Properties|java.io.File|java.nio.file.Files|java.net.Socket|HttpURLConnection|java.security.Permissions)
+                regex: (?i)(java\.lang\.(Runtime|ProcessBuilder|ClassLoader|reflect\.Method|Class|reflect\.Field|System|management\.RuntimeMXBean)|javax\.script\.ScriptEngineManager|javax\.tools\.JavaCompiler|java\.util\.Properties|java.io.File|java.nio.file.Files|java.net.Socket|HttpURLConnection|java.security.Permissions|loadLibrary)
                   
           # Detecting usage of sun.misc.Unsafe
           - patterns: 
