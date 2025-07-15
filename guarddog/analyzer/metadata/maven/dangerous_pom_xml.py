@@ -2,6 +2,7 @@ from typing import Optional
 import os
 import sys
 import subprocess
+import xml.etree.ElementTree as ET
 
 from guarddog.analyzer.metadata.detector import Detector
 
@@ -23,6 +24,7 @@ class MavenDangerousPomXML(Detector):
             raise ValueError("path is needed to run heuristic " + self.get_name())
         self.get_effective_pom(path)
         print("effective pom generated")
+        self.http_unsafe(os.path.join(path, OUTPUT_FILE))
         
 
     def get_effective_pom(self, path: str): 
@@ -72,6 +74,38 @@ class MavenDangerousPomXML(Detector):
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             sys.exit(1)
+
+
+
+
+
+    def http_unsafe(self, pom_path: str) -> bool: 
+        if not os.path.isfile(pom_path):
+            print(f"Error: No  effective pom found in '{pom_path}'.")
+            sys.exit(1)
+        tree = ET.parse(pom_path)
+        root = tree.getroot()
+        ns = {'mvn': 'http://maven.apache.org/POM/4.0.0'}
+
+        url_paths = [
+        ".//mvn:repository/mvn:url",
+        ".//mvn:pluginRepository/mvn:url",
+        ".//mvn:distributionManagement/mvn:repository/mvn:url",
+        ".//mvn:distributionManagement/mvn:snapshotRepository/mvn:url",
+        ".//mvn:scm/mvn:url",
+        ]
+        print("Scanning for insecure HTTP URLs...\n")
+        found = False
+        for path in url_paths:
+            for elem in root.findall(path, ns):
+                url = elem.text.strip() if elem.text else ""
+                if url.startswith("http://"):
+                    print(f"Insecure URL found: {url}")
+                    found = True
+
+        if not found:
+            print("No insecure HTTP URLs found.")
+        return found
 
 
         
