@@ -7,6 +7,24 @@ import xml.etree.ElementTree as ET
 from guarddog.analyzer.metadata.detector import Detector
 
 OUTPUT_FILE = "effective-pom.xml"
+NAMESPACE = {'mvn': 'http://maven.apache.org/POM/4.0.0'}
+DANGEROUS_PLUGINS = {
+            "exec-maven-plugin",
+            "maven-antrun-plugin",
+            "groovy-maven-plugin",
+            "jruby-maven-plugin",
+            "jython-maven-plugin",
+            "protobuf-maven-plugin",
+            "maven-protoc-plugin",
+            "scala-maven-plugin"
+        }
+URL_PATHS = [
+        ".//mvn:repository/mvn:url",
+        ".//mvn:pluginRepository/mvn:url",
+        ".//mvn:distributionManagement/mvn:repository/mvn:url",
+        ".//mvn:distributionManagement/mvn:snapshotRepository/mvn:url",
+        ".//mvn:scm/mvn:url",
+        ]
 
 class MavenDangerousPomXML(Detector): 
     def __init__(self):
@@ -20,14 +38,33 @@ class MavenDangerousPomXML(Detector):
         """
             Detects dangerous behaviours defined in the effective pom.xml of the java project in path
         """
+        # must return a bool, message
         if path is None:
             raise ValueError("path is needed to run heuristic " + self.get_name())
-        self.get_effective_pom(path)
-        print("effective pom generated")
-        self.http_unsafe(os.path.join(path, OUTPUT_FILE))
+        message: str = ""
+        result = False
+        effective_pom_path: str = self.get_effective_pom(path)
+        if not os.path.isfile(effective_pom_path):
+            print(f"Error: No  effective pom found in '{effective_pom_path}'.")
+            sys.exit(1)
+
+        http_unsafe: bool = self.http_unsafe(effective_pom_path)
+        if http_unsafe:
+            message += f"Unsafe http usage detected in {os.path.abspath(effective_pom_path)}.\n"
+            result = True
+
+        malicious_plugin_found, malicious_plugins_list  = self.is_malicious_plugin(effective_pom_path)
+        if malicious_plugin_found: 
+            message += "Suspicious plugins affecting lifecycle phases found: \n"
+            for plugin in malicious_plugins_list: 
+                message += f"\t - {plugin}\n"
+            result = True
+
+
+
         
 
-    def get_effective_pom(self, path: str): 
+    def get_effective_pom(self, path: str) -> str: 
         """
             Get the effective pom.xml file of the project in path. The pom.xml is supposed to be in the root directory: {path}/pom.xml
             Stores the resulting effective xml in OUTPUT_FILE
@@ -44,7 +81,7 @@ class MavenDangerousPomXML(Detector):
         print(f"pom.xml found at {path}/ ")
 
         command = ["mvn", "help:effective-pom", f"-Doutput={OUTPUT_FILE}"]
-        output_path = os.path.join(path, OUTPUT_FILE)
+        effective_pom_path = os.path.join(path, OUTPUT_FILE)
 
         try:
             # create the effective pom xml
@@ -55,12 +92,13 @@ class MavenDangerousPomXML(Detector):
                 capture_output=True,
                 text=True
             )
-            if os.path.exists(output_path):
-                print(f"Effective POM generated at: {os.path.abspath(output_path)}")
+            if os.path.exists(effective_pom_path):
+                print(f"Effective POM generated at: {os.path.abspath(effective_pom_path)}")
             else:
                 # This case is unlikely if `check=True` is used, but serves as a fallback.
                 print("Error: Maven command executed, but the output file was not created.")
                 sys.exit(1)
+            return effective_pom_path
         
         except FileNotFoundError:
             print("Error: 'mvn' command not found. Please ensure Apache Maven is installed and in your system's PATH.")
@@ -80,33 +118,48 @@ class MavenDangerousPomXML(Detector):
 
 
     def http_unsafe(self, pom_path: str) -> bool: 
-        if not os.path.isfile(pom_path):
-            print(f"Error: No  effective pom found in '{pom_path}'.")
-            sys.exit(1)
+        """
+        Detects unsafe http protocol in the effective pom.xml
+        """
         tree = ET.parse(pom_path)
         root = tree.getroot()
-        ns = {'mvn': 'http://maven.apache.org/POM/4.0.0'}
 
-        url_paths = [
-        ".//mvn:repository/mvn:url",
-        ".//mvn:pluginRepository/mvn:url",
-        ".//mvn:distributionManagement/mvn:repository/mvn:url",
-        ".//mvn:distributionManagement/mvn:snapshotRepository/mvn:url",
-        ".//mvn:scm/mvn:url",
-        ]
         print("Scanning for insecure HTTP URLs...\n")
         found = False
-        for path in url_paths:
-            for elem in root.findall(path, ns):
-                url = elem.text.strip() if elem.text else ""
+        for path in URL_PATHS:
+            for elem in root.findall(path, NAMESPACE):
+                url = self.get_text(elem)
                 if url.startswith("http://"):
-                    print(f"Insecure URL found: {url}")
+                    print(f"Insecure URL found: {url} in the effective pom.xml {pom_path}.")
                     found = True
 
         if not found:
-            print("No insecure HTTP URLs found.")
+            print("No insecure HTTP URLs found in the effective pom.xml.")
         return found
 
 
-        
+    def get_text(self, elem):
+        return elem.text.strip() if elem is not None and elem.text else ""
+
+    def is_malicious_plugin(self, pom_path: str)-> tuple[bool, list]:
+        """ Detects suspicious plugins in effective pom.xml using an exhaustive list of plugins in Java able to execute code in lifecycle phases 
+            Returns a bool and
+        """
+        tree = ET.parse(pom_path)
+        root = tree.getroot()
+        results = []
+        suspicious_plugin_found = False
+
+        for plugin in root.findall(".//mvn:plugin", NAMESPACE):
+            artifact_id = plugin.find("mvn:artifactId", NAMESPACE)
+            plugin_id = self.get_text(artifact_id)
+            if plugin_id in DANGEROUS_PLUGINS:
+                suspicious_plugin_found = True
+                results.append(plugin_id)
+                print(f"Suspicious plugin found: {plugin_id} in the effective pom.xml {pom_path}.")
+        if not suspicious_plugin_found: 
+            print(f"No suspicious plugin found in the effective pom.xml {pom_path}.")
+        return suspicious_plugin_found, results
+
+    
         
