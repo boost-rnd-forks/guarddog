@@ -73,6 +73,9 @@ class MavenDangerousPomXML(Detector):
             message += f"\nSuspicious tags combination found in plugin {plugin}: \n"
             message += f"\tFound in <execution> : {suspicious_tags[plugin]['tag']} bound with early phase {suspicious_tags[plugin]['phase']}"
 
+        urls_in_cmd: bool = self.url_as_cmd_argument(effective_pom_path)
+        if urls_in_cmd: 
+            message += f"\n\nA URL was found to be used as a command argument in <argument> or <script>."
         print("\n\n")
         print("-"*50)
         print(f"Findings in the target {path}")
@@ -255,7 +258,27 @@ class MavenDangerousPomXML(Detector):
         return results
             
 
-                
+    def url_as_cmd_argument(self, pom_path: str)-> bool : 
+        """ 
+            Detects urls in <arguments> or <script> tags
+            Having urls as command arguments is often related to a connection to a C2 server
+        """
+        tree = ET.parse(pom_path)
+        root = tree.getroot()
+        found = False
+        urls = ["http://", "https://", "ftp://"]
+        print("\nScanning for urls as cmd args ...\n")
+        argument = root.findall(".//mvn:argument", NAMESPACE)
+        script = root.findall(".//mvn:script", NAMESPACE)
+        for elem in argument + script: 
+            arg = self.get_text(elem)
+            for url in urls: 
+                if url in arg: 
+                    found = True
+        return found 
+            
+            
+
 
                 
 
