@@ -1,0 +1,29 @@
+rules:
+  - id: maven-serialize-environment
+    message: |
+      This package contains a call that serializes all environment variables (System.getenv()) which indicates that the whole set of environment
+      variables are serialized at some point. This can indicate that the package attempts to steal the environment
+      from the production host.
+    metadata:
+      description: Identify when a package serializes 'System.getenv()' to exfiltrate environment variables
+    languages:
+      - java
+    severity: WARNING
+    # Detects serialization of all environment variables which could indicate data exfiltration
+    patterns:
+      - pattern-either:
+          # JSON serialization patterns
+          - pattern: new ObjectMapper().writeValueAsString(System.getenv())
+          - pattern: new Gson().toJson(System.getenv())
+          - pattern: JSON.stringify(System.getenv())
+          - pattern: JsonUtils.toJson(System.getenv())
+          # String conversion patterns
+          - pattern: System.getenv().toString()
+          - pattern: String.valueOf(System.getenv())
+          # Direct serialization patterns
+          - pattern: ObjectMapper.writeValueAsString(System.getenv())
+          - pattern: Gson.toJson(System.getenv())
+          # Variable assignment with serialization
+          - pattern: $VAR = System.getenv().toString()
+          - pattern: $VAR = new ObjectMapper().writeValueAsString(System.getenv())
+          - pattern: $VAR = new Gson().toJson(System.getenv())
