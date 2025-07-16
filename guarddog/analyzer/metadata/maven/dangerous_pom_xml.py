@@ -14,9 +14,7 @@ DANGEROUS_PLUGINS = {
             "groovy-maven-plugin",
             "jruby-maven-plugin",
             "jython-maven-plugin",
-            "protobuf-maven-plugin",
-            "maven-protoc-plugin",
-            "scala-maven-plugin"
+            "maven-site-plugin"
         }
 URL_PATHS = [
         ".//mvn:repository/mvn:url",
@@ -50,15 +48,28 @@ class MavenDangerousPomXML(Detector):
 
         http_unsafe: bool = self.http_unsafe(effective_pom_path)
         if http_unsafe:
-            message += f"Unsafe http usage detected in {os.path.abspath(effective_pom_path)}.\n"
+            message += f"\nUnsafe http usage detected in {os.path.abspath(effective_pom_path)}.\n"
             result = True
+
+        untrusted_plugin_source, unstrusted_urls = self.untrusted_download_source(effective_pom_path)
+        if untrusted_plugin_source: 
+            message += f"\nPlugin(s) downloaded from unstructed source(s): \n"
+            for bad_url in unstrusted_urls:
+                message += f"\t - {bad_url}\n"
+            result = True 
 
         malicious_plugin_found, malicious_plugins_list  = self.is_malicious_plugin(effective_pom_path)
         if malicious_plugin_found: 
-            message += "Suspicious plugins affecting lifecycle phases found: \n"
+            message += "\nSuspicious plugins affecting lifecycle phases found: \n"
             for plugin in malicious_plugins_list: 
                 message += f"\t - {plugin}\n"
             result = True
+
+        print("\n\n")
+        print("-"*50)
+        print(f"Findings in the target {path}")
+        print("-"*50)
+        print(message)
 
 
 
@@ -119,7 +130,7 @@ class MavenDangerousPomXML(Detector):
 
     def http_unsafe(self, pom_path: str) -> bool: 
         """
-        Detects unsafe http protocol in the effective pom.xml
+        Detects unsafe http protocol in the effective pom.xml to get a custom plugin
         """
         tree = ET.parse(pom_path)
         root = tree.getroot()
@@ -136,6 +147,29 @@ class MavenDangerousPomXML(Detector):
         if not found:
             print("No insecure HTTP URLs found in the effective pom.xml.")
         return found
+    
+    def untrusted_download_source(self, pom_path: str)-> tuple[bool, list[str]] : 
+        """ 
+            Detects when a custom plugin in <repository> or <pluginRepository> is not downloaded from https://repo.maven.apache.org/maven2
+            Returns a boolean and a list of detected not conform urls
+        """
+        tree = ET.parse(pom_path)
+        root = tree.getroot()
+        print("Scanning for unstrusted plugins downloads...\n")
+        found = False
+        bad_urls = []
+        download_urls = [
+        ".//mvn:repository/mvn:url",
+        ".//mvn:pluginRepository/mvn:url"
+        ]
+        for path in download_urls:
+            for elem in root.findall(path, NAMESPACE):
+                url = self.get_text(elem)
+                if not url.startswith("https://repo.maven.apache.org"):
+                    found = True
+                    bad_urls.append(url)
+                    print(f"Untrusted plugin source {url}.")
+        return found, bad_urls
 
 
     def get_text(self, elem):
@@ -147,6 +181,7 @@ class MavenDangerousPomXML(Detector):
         """
         tree = ET.parse(pom_path)
         root = tree.getroot()
+        print("Scanning for dangerous plugins ...\n")
         results = []
         suspicious_plugin_found = False
 
