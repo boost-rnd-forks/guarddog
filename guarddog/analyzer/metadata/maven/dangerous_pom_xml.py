@@ -3,6 +3,7 @@ import os
 import sys
 import subprocess
 import xml.etree.ElementTree as ET
+import re
 
 from guarddog.analyzer.metadata.detector import Detector
 
@@ -76,6 +77,10 @@ class MavenDangerousPomXML(Detector):
         urls_in_cmd: bool = self.url_as_cmd_argument(effective_pom_path)
         if urls_in_cmd: 
             message += f"\n\nA URL was found to be used as a command argument in <argument> or <script>."
+
+        suspicious_argline: str = self.suspsicious_argline_usage(effective_pom_path)
+        if suspicious_argline: 
+            message += f"\nA suspicious usage of <argLine> was detected in the effective pom: \n\t {suspicious_argline}"
         print("\n\n")
         print("-"*50)
         print(f"Findings in the target {path}")
@@ -278,6 +283,41 @@ class MavenDangerousPomXML(Detector):
         return found 
             
             
+    def suspsicious_argline_usage(self, pom_path: str)-> str: 
+        """
+            Detects suspicious argument in <argLine> tags 
+            - usage of -javaagent: , able to manipulate bytecode at runtime 
+                combined with 
+                - urls (http(s), ftp)
+                - .jar files
+            or
+            - dynamic parameters: ${...}
+            - suspicious commands (curl, wget, sh...)
+        """
+        tree = ET.parse(pom_path)
+        root = tree.getroot()
+        suspicious = False
+        print("\nScanning for <argLine> commands ...\n")
+        argLine = root.findall(".//mvn:argLine", NAMESPACE)
+        for elem in argLine: 
+            cmd = self.get_text(elem)
+            if "-javaagent:" in cmd: 
+                if re.search(r"(https?|ftp):\/\/", cmd) or re.search(r"\.jar", cmd): 
+                    suspicious = True
+                    print("Suspicious url or .jar with -javaagent: in <argLine>")
+            elif re.search(r"\${.*}", cmd): 
+                suspicious = True
+                print("Suspicious dynamic parameter ${...} in <argLine>")
+            elif re.search(r"(bash|sh|nc|curl|wget|powershell|start|exec|eval|sys|scp|rsync|ncat|telnet|socat)", cmd): 
+                suspicious =  True
+                print("Suspicious command in <argLine> (curl, wget, sh...)")
+        if suspicious: 
+            return cmd
+        else: 
+            return None
+
+
+        
 
 
                 
