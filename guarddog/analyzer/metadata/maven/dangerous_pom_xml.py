@@ -21,8 +21,11 @@ URL_PATHS = [
         ".//mvn:pluginRepository/mvn:url",
         ".//mvn:distributionManagement/mvn:repository/mvn:url",
         ".//mvn:distributionManagement/mvn:snapshotRepository/mvn:url",
-        ".//mvn:scm/mvn:url",
         ]
+SUSPICIOUS_TAGS = {"executable", "mainClass", "script", "argument"}
+EARLY_PHASES     = {"validate", "initialize", "generate-sources",
+                    "process-resources", "compile", "generate-resources"}
+SAFE_CMD = ["git"]
 
 class MavenDangerousPomXML(Detector): 
     def __init__(self):
@@ -64,6 +67,11 @@ class MavenDangerousPomXML(Detector):
             for plugin in malicious_plugins_list: 
                 message += f"\t - {plugin}\n"
             result = True
+
+        suspicious_tags: dict = self.dangerous_tags_combinations(effective_pom_path)
+        for plugin in suspicious_tags: 
+            message += f"\nSuspicious tags combination found in plugin {plugin}: \n"
+            message += f"\tFound in <execution> : {suspicious_tags[plugin]['tag']} bound with early phase {suspicious_tags[plugin]['phase']}"
 
         print("\n\n")
         print("-"*50)
@@ -148,6 +156,9 @@ class MavenDangerousPomXML(Detector):
             print("No insecure HTTP URLs found in the effective pom.xml.")
         return found
     
+
+
+    
     def untrusted_download_source(self, pom_path: str)-> tuple[bool, list[str]] : 
         """ 
             Detects when a custom plugin in <repository> or <pluginRepository> is not downloaded from https://repo.maven.apache.org/maven2
@@ -175,9 +186,11 @@ class MavenDangerousPomXML(Detector):
     def get_text(self, elem):
         return elem.text.strip() if elem is not None and elem.text else ""
 
+
+
+
     def is_malicious_plugin(self, pom_path: str)-> tuple[bool, list]:
         """ Detects suspicious plugins in effective pom.xml using an exhaustive list of plugins in Java able to execute code in lifecycle phases 
-            Returns a bool and
         """
         tree = ET.parse(pom_path)
         root = tree.getroot()
@@ -197,4 +210,54 @@ class MavenDangerousPomXML(Detector):
         return suspicious_plugin_found, results
 
     
-        
+    def dangerous_tags_combinations(self, pom_path: str) -> dict: 
+        """ 
+            Detects suspicious tags combinations in the effective pom.xml :
+            If are found in an <execution> tag 
+                - an early lifecycle phase tag ("validate", "initialize", "generate-sources",
+                    "process-resources", "compile")
+                - and a suspicious tag ("executable", "mainClass", "script", "argument")
+            
+                Return: 
+                    dict(plugin_id: {phases: list, tags: (tag, cmd)})
+        """
+        tree = ET.parse(pom_path)
+        root = tree.getroot()
+        results = {}
+        print("\nScanning for dangerous tags ...\n")
+        for plugin in root.findall(".//mvn:plugin", NAMESPACE):
+            artifact_id = plugin.find("mvn:artifactId", NAMESPACE)
+            plugin_id   = self.get_text(artifact_id) or "(unknown‑plugin)"
+
+            early_phases = []
+            tags_found = []
+            phase = False
+            has_susp_tag =  False
+            for execution in plugin.findall(".//mvn:execution", NAMESPACE):
+                #  <execution> blocks bound to early phase
+                phase_elem = execution.find("mvn:phase", NAMESPACE)
+                phase_txt  = self.get_text(phase_elem).lower()
+                if phase_txt in EARLY_PHASES:
+                    early_phases.append(phase_txt)
+                    phase = True
+                #  <execution> blocks with suspicious tags 
+                for tag in SUSPICIOUS_TAGS: 
+                    tag_elem = execution.find(f".//mvn:{tag}", NAMESPACE)
+                    tag_txt = self.get_text(tag_elem)
+                    if tag_txt and tag_txt not in SAFE_CMD:
+                        has_susp_tag = True
+                        tags_found.append((f"<{tag}>", tag_txt))
+                # if both found
+                if has_susp_tag and phase: 
+                    results[plugin_id] = {"phase": early_phases, "tag": tags_found}
+                    print(f"Suspicious tags combination found in {plugin_id}: {tags_found} in phases {early_phases}")
+                
+        return results
+            
+
+                
+
+                
+
+
+      
