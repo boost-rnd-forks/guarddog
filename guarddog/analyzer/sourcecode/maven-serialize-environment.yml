@@ -9,21 +9,20 @@ rules:
     languages:
       - java
     severity: WARNING
-    # Detects serialization of all environment variables which could indicate data exfiltration
+
     patterns:
       - pattern-either:
-          # JSON serialization patterns
           - pattern: new ObjectMapper().writeValueAsString(System.getenv())
           - pattern: new Gson().toJson(System.getenv())
           - pattern: JSON.stringify(System.getenv())
           - pattern: JsonUtils.toJson(System.getenv())
-          # String conversion patterns
+
           - pattern: System.getenv().toString()
           - pattern: String.valueOf(System.getenv())
-          # Direct serialization patterns
+
           - pattern: ObjectMapper.writeValueAsString(System.getenv())
           - pattern: Gson.toJson(System.getenv())
-          # Variable assignment with serialization
+
           - pattern: $VAR = System.getenv().toString()
           - pattern: $VAR = new ObjectMapper().writeValueAsString(System.getenv())
           - pattern: $VAR = new Gson().toJson(System.getenv())
