@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Iterable, Optional, Dict
 
 from guarddog.analyzer.metadata import get_metadata_detectors
-from guarddog.analyzer.sourcecode import get_sourcecode_rules, SempgrepRule, YaraRule
+from guarddog.analyzer.sourcecode import get_sourcecode_rules, get_sourcecode_detectors, SempgrepRule, YaraRule
 from guarddog.utils.config import YARA_EXT_EXCLUDE
 from guarddog.ecosystems import ECOSYSTEM
 
@@ -42,8 +42,10 @@ class Analyzer:
 
         # Rules and associated detectors
         self.metadata_detectors = get_metadata_detectors(ecosystem)
+        self.sourcecode_detectors = get_sourcecode_detectors(ecosystem)
 
         self.metadata_ruleset: set[str] = set(self.metadata_detectors.keys())
+        self.sourcecode_ruleset: set[str] = set(self.sourcecode_detectors.keys())
         self.semgrep_ruleset: set[str] = set(
             r.id for r in get_sourcecode_rules(ecosystem, SempgrepRule)
         )
@@ -152,10 +154,12 @@ class Analyzer:
 
         yarascan_results = self.analyze_yara(path, rules)
 
+        scripts_results = self.analyze_sourcecode_scripts(path, rules)
+
         # Concatenate dictionaries together
-        issues = semgrepscan_results["issues"] + yarascan_results["issues"]
-        results = semgrepscan_results["results"] | yarascan_results["results"]
-        errors = semgrepscan_results["errors"] | yarascan_results["errors"]
+        issues = semgrepscan_results["issues"] + yarascan_results["issues"] + scripts_results["issues"]
+        results = semgrepscan_results["results"] | yarascan_results["results"] | scripts_results["results"]
+        errors = semgrepscan_results["errors"] | yarascan_results["errors"] | scripts_results["errors"]
 
         return {"issues": issues, "errors": errors, "results": results, "path": path}
 
@@ -272,6 +276,45 @@ class Analyzer:
             results = results | rule_results
         except Exception as e:
             errors["rules-all"] = f"failed to run rule: {str(e)}"
+
+        return {"results": results, "errors": errors, "issues": issues}
+    
+    def analyze_sourcecode_scripts(self, path: str, rules=None) -> dict:
+        """
+        Analyzes the sourcecode of a given package using python scripts 
+
+        Args:
+            path (str): path to package
+            info (dict): package information given by PyPI Json API
+            rules (set, optional): Set of metadata rules to analyze. Defaults to all rules.
+
+        Returns:
+            dict[str]: map from each sourcecode rule and their corresponding output
+        """
+
+        log.debug(f"Running sourcecode script rules against package '{path}'")
+
+        all_rules = self.sourcecode_ruleset
+        if rules is not None:
+            # filtering the full ruleset witht the user's input
+            all_rules = self.sourcecode_ruleset & rules
+
+        # for each sourcecode rule, is expected to have an nulleable string as result
+        # None value represents that the rule was not matched
+        results: dict[str, Optional[str]] = {}
+        errors = {}
+        issues = 0
+
+        for rule in all_rules:
+            try:
+                log.debug(f"Running rule {rule} against '{path}'")
+                rule_matches, message = self.sourcecode_detectors[rule].detect(path)
+                results[rule] = None
+                if rule_matches:
+                    issues += 1
+                    results[rule] = message
+            except Exception as e:
+                errors[rule] = f"failed to run rule {rule}: {str(e)}"
 
         return {"results": results, "errors": errors, "issues": issues}
 
