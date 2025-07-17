@@ -125,7 +125,7 @@ class MavenDangerousPomXML(Detector):
                 text=True
             )
             if os.path.exists(effective_pom_path):
-                print(f"Effective POM generated at: {os.path.abspath(effective_pom_path)}")
+                print(f"Effective POM generated at: {os.path.abspath(effective_pom_path)}\n")
             else:
                 # This case is unlikely if `check=True` is used, but serves as a fallback.
                 print("Error: Maven command executed, but the output file was not created.")
@@ -156,7 +156,7 @@ class MavenDangerousPomXML(Detector):
         tree = ET.parse(pom_path)
         root = tree.getroot()
 
-        print("Scanning for insecure HTTP URLs...\n")
+        print("\nScanning for insecure HTTP URLs...\n")
         found = False
         for path in URL_PATHS:
             for elem in root.findall(path, NAMESPACE):
@@ -201,24 +201,33 @@ class MavenDangerousPomXML(Detector):
 
     def is_malicious_plugin(self, pom_path: str)-> tuple[bool, list]:
         """ 
-            Detects suspicious plugins in effective pom.xml using an exhaustive list of plugins in Java able to execute code in lifecycle phases 
+            Detects suspicious plugins in effective pom.xml using an exhaustive list of plugins in Java able to execute code in early lifecycle phases 
         """
         tree = ET.parse(pom_path)
         root = tree.getroot()
         print("Scanning for dangerous plugins ...\n")
         results = []
         suspicious_plugin_found = False
-
+        # detect dangerous plugins
         for plugin in root.findall(".//mvn:plugin", NAMESPACE):
             artifact_id = plugin.find("mvn:artifactId", NAMESPACE)
             plugin_id = self.get_text(artifact_id)
             if plugin_id in DANGEROUS_PLUGINS:
+                # detects early phase specifications
                 for phase in plugin.findall(".//mvn:phase", NAMESPACE):
                     phase_txt = self.get_text(phase)
                     if phase_txt in EARLY_PHASES:
                         suspicious_plugin_found = True
                         results.append(plugin_id)
                         print(f"Suspicious plugin found: \"{plugin_id}\" bound to early phase \"{phase_txt}\".")
+                # detects suspicious tags usage by the detected plugin 
+                for tag in SUSPICIOUS_TAGS: 
+                    tag_elem = plugin.findall(f".//mvn:{tag}", NAMESPACE)
+                    for t in tag_elem: 
+                        suspicious_plugin_found = True
+                        results.append(plugin_id)
+                        print(f"Suspicious plugin found: \"{plugin_id}\" using  suspicious tag <{tag}> {self.get_text(t)}")
+
         return suspicious_plugin_found, results
 
     
