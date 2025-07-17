@@ -23,7 +23,7 @@ URL_PATHS = [
         ".//mvn:distributionManagement/mvn:repository/mvn:url",
         ".//mvn:distributionManagement/mvn:snapshotRepository/mvn:url",
         ]
-SUSPICIOUS_TAGS = {"executable", "mainClass", "script", "argument"}
+SUSPICIOUS_TAGS = {"executable", "mainClass", "script", "argument", "arg", "argLine"}
 EARLY_PHASES     = {"validate", "initialize", "generate-sources",
                     "process-resources", "compile", "generate-resources"}
 SAFE_CMD = ["git"]
@@ -73,19 +73,24 @@ class MavenDangerousPomXML(Detector):
         for plugin in suspicious_tags: 
             message += f"\nSuspicious tags combination found in plugin {plugin}: \n"
             message += f"\tFound in <execution> : {suspicious_tags[plugin]['tag']} bound with early phase {suspicious_tags[plugin]['phase']}"
+            result = True
 
         urls_in_cmd: bool = self.url_as_cmd_argument(effective_pom_path)
         if urls_in_cmd: 
             message += f"\n\nA URL was found to be used as a command argument in <argument> or <script>."
+            result = True
 
         suspicious_argline: str = self.suspsicious_argline_usage(effective_pom_path)
         if suspicious_argline: 
             message += f"\nA suspicious usage of <argLine> was detected in the effective pom: \n\t {suspicious_argline}"
+            result = True
+
         print("\n\n")
         print("-"*50)
         print(f"Findings in the target {path}")
         print("-"*50)
         print(message)
+        return result, message
 
 
 
@@ -159,9 +164,6 @@ class MavenDangerousPomXML(Detector):
                 if url.startswith("http://"):
                     print(f"Insecure URL found: {url} in the effective pom.xml {pom_path}.")
                     found = True
-
-        if not found:
-            print("No insecure HTTP URLs found in the effective pom.xml.")
         return found
     
 
@@ -198,7 +200,8 @@ class MavenDangerousPomXML(Detector):
 
 
     def is_malicious_plugin(self, pom_path: str)-> tuple[bool, list]:
-        """ Detects suspicious plugins in effective pom.xml using an exhaustive list of plugins in Java able to execute code in lifecycle phases 
+        """ 
+            Detects suspicious plugins in effective pom.xml using an exhaustive list of plugins in Java able to execute code in lifecycle phases 
         """
         tree = ET.parse(pom_path)
         root = tree.getroot()
@@ -210,11 +213,12 @@ class MavenDangerousPomXML(Detector):
             artifact_id = plugin.find("mvn:artifactId", NAMESPACE)
             plugin_id = self.get_text(artifact_id)
             if plugin_id in DANGEROUS_PLUGINS:
-                suspicious_plugin_found = True
-                results.append(plugin_id)
-                print(f"Suspicious plugin found: {plugin_id} in the effective pom.xml {pom_path}.")
-        if not suspicious_plugin_found: 
-            print(f"No suspicious plugin found in the effective pom.xml {pom_path}.")
+                for phase in plugin.findall(".//mvn:phase", NAMESPACE):
+                    phase_txt = self.get_text(phase)
+                    if phase_txt in EARLY_PHASES:
+                        suspicious_plugin_found = True
+                        results.append(plugin_id)
+                        print(f"Suspicious plugin found: \"{plugin_id}\" bound to early phase \"{phase_txt}\".")
         return suspicious_plugin_found, results
 
     
