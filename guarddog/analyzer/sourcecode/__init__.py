@@ -8,6 +8,8 @@ import yaml
 from yaml.loader import SafeLoader
 
 from guarddog.ecosystems import ECOSYSTEM
+from guarddog.analyzer.sourcecode.maven import MAVEN_PYTHON_RULES
+from guarddog.analyzer.sourcecode.detector import Detector
 
 current_dir = pathlib.Path(__file__).parent.resolve()
 
@@ -117,3 +119,9 @@ for file_name in yara_rule_file_names:
         if match:
             rule_description = match.group(1)
         SOURCECODE_RULES.append(YaraRule(id=rule_id, file=file_name, description=rule_description))
+
+def get_sourcecode_detectors(ecosystem: ECOSYSTEM) -> dict[str, Detector]:
+    match (ecosystem):
+        case ECOSYSTEM.MAVEN:
+            return MAVEN_PYTHON_RULES
+    return {}
