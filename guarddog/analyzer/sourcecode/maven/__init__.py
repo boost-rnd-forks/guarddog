@@ -2,7 +2,7 @@
 # Currently empty - rules can be added here in the future
 from guarddog.analyzer.sourcecode.maven.dangerous_pom_xml import MavenDangerousPomXML
 
-MAVEN_PYTHON_RULES = {} 
+MAVEN_PYTHON_RULES = {}
 
 classes = [
     MavenDangerousPomXML,
