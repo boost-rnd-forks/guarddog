@@ -93,7 +93,7 @@ class MavenDangerousPomXML(Detector):
         )
         if malicious_plugin_found:
             message += "\nSuspicious plugins affecting lifecycle phases found: \n"
-            for plugin in malicious_plugins_list:
+            for plugin in set(malicious_plugins_list):
                 message += f"\t - {plugin}\n"
             result = True
 
@@ -235,7 +235,7 @@ class MavenDangerousPomXML(Detector):
                             f'Suspicious plugin found: "{plugin_id}" using  suspicious tag <{tag}> {self.get_text(t)}'
                         )
 
-        return suspicious_plugin_found, set(results)
+        return suspicious_plugin_found, results
 
     def dangerous_tags_combinations(self, pom_path: str) -> dict:
         """
