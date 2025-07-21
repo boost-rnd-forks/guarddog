@@ -33,6 +33,17 @@ EARLY_PHASES = {
     "generate-resources",
 }
 SAFE_CMD = ["git"]
+TRUSTED_REPOS = [
+    "repo.maven.apache.org",
+    "repo.spring.io",
+    "repo.eclipse.org",
+    "repository.apache.org",
+    "oss.sonatype.org",
+    "repository.jboss.org",
+    "maven.google.com",
+    "maven.oracle.com",
+    "packages.atlassian.com",
+]
 
 log = logging.getLogger("guarddog")
 
@@ -166,7 +177,8 @@ class MavenDangerousPomXML(Detector):
     def untrusted_download_source(self, pom_path: str) -> tuple[bool, list[str]]:
         """
         Detects when a custom plugin in <repository> or <pluginRepository>
-            is not downloaded from https://repo.maven.apache.org/maven2
+        is not downloaded from a whitelisted trusted source.
+
         Returns a boolean and a list of detected not conform urls
         """
         tree = ET.parse(pom_path)
@@ -178,10 +190,11 @@ class MavenDangerousPomXML(Detector):
         for path in download_urls:
             for elem in root.findall(path, NAMESPACE):
                 url = self.get_text(elem)
-                if not url.startswith("https://repo.maven.apache.org"):
-                    found = True
-                    bad_urls.append(url)
-                    log.debug(f"Untrusted plugin source {url}.")
+                for url in TRUSTED_REPOS:
+                    if not url.startswith(url):
+                        found = True
+                        bad_urls.append(url)
+                        log.debug(f"Untrusted plugin source {url}.")
         return found, bad_urls
 
     def get_text(self, elem):
@@ -222,7 +235,7 @@ class MavenDangerousPomXML(Detector):
                             f'Suspicious plugin found: "{plugin_id}" using  suspicious tag <{tag}> {self.get_text(t)}'
                         )
 
-        return suspicious_plugin_found, results
+        return suspicious_plugin_found, set(results)
 
     def dangerous_tags_combinations(self, pom_path: str) -> dict:
         """
