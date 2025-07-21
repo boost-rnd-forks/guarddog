@@ -21,6 +21,7 @@ class SourceCodeRule:
     """
     Base class for source code rules
     """
+
     id: str
     file: str
     description: str
@@ -31,6 +32,7 @@ class YaraRule(SourceCodeRule):
     """
     Yara rule just reimplements base
     """
+
     pass
 
 
@@ -40,6 +42,7 @@ class SempgrepRule(SourceCodeRule):
     Semgrep rule are language specific
     Content of rule in yaml format is accessible through rule_content
     """
+
     ecosystem: ECOSYSTEM
     rule_content: dict
 
@@ -100,7 +103,9 @@ for file_name in semgrep_rule_file_names:
                             SempgrepRule(
                                 id=rule["id"],
                                 ecosystem=ecosystem,
-                                description=rule.get("metadata", {}).get("description", ""),
+                                description=rule.get("metadata", {}).get(
+                                    "description", ""
+                                ),
                                 file=file_name,
                                 rule_content=rule,
                             )
@@ -113,14 +118,19 @@ yara_rule_file_names = list(
 # refer to README.md for more information
 for file_name in yara_rule_file_names:
     rule_id = pathlib.Path(file_name).stem
-    description_regex = fr'\s*rule\s+{rule_id}[^}}]+meta:[^}}]+description\s*=\s*\"(.+?)\"'
+    description_regex = (
+        rf"\s*rule\s+{rule_id}[^}}]+meta:[^}}]+description\s*=\s*\"(.+?)\""
+    )
 
     with open(os.path.join(current_dir, file_name), "r") as fd:
         match = re.search(description_regex, fd.read())
         rule_description = ""
         if match:
             rule_description = match.group(1)
-        SOURCECODE_RULES.append(YaraRule(id=rule_id, file=file_name, description=rule_description))
+        SOURCECODE_RULES.append(
+            YaraRule(id=rule_id, file=file_name, description=rule_description)
+        )
+
 
 def get_sourcecode_detectors(ecosystem: ECOSYSTEM) -> dict[str, Detector]:
     match (ecosystem):

@@ -41,7 +41,8 @@ class MavenDangerousPomXML(Detector):
     def __init__(self):
         super().__init__(
             name="dangerous_pom_xml",
-            description="Detects pom.xml files with dangerous configuration: unsafe protocol usage, dangerous plugins, code execution in lifecycle phases",
+            description="Detects pom.xml files with dangerous configuration: unsafe protocol usage, "
+            "dangerous plugins, code execution in lifecycle phases",
         )
 
     def detect(self, path: Optional[str] = None) -> tuple[bool, Optional[str]]:
@@ -62,7 +63,7 @@ class MavenDangerousPomXML(Detector):
         message += f"\nAnalyzing the effective pom path generated at {effective_pom_path} from {path}.\n"
         http_unsafe, http_urls = self.http_unsafe(effective_pom_path)
         if http_unsafe:
-            message += f"\nUnsafe http usage detected:\n"
+            message += "\nUnsafe http usage detected:\n"
             for url in http_urls:
                 message += f"\t- {url}\n"
             result = True
@@ -71,7 +72,7 @@ class MavenDangerousPomXML(Detector):
             effective_pom_path
         )
         if untrusted_plugin_source:
-            message += f"\nPlugin(s) downloaded from unstructed source(s): \n"
+            message += "\nPlugin(s) downloaded from unstructed source(s): \n"
             for bad_url in unstrusted_urls:
                 message += f"\t - {bad_url}\n"
             result = True
@@ -88,12 +89,13 @@ class MavenDangerousPomXML(Detector):
         suspicious_tags: dict = self.dangerous_tags_combinations(effective_pom_path)
         for plugin in suspicious_tags:
             message += f"\nSuspicious tags combination found in plugin {plugin}: \n"
-            message += f"\tFound in <execution> : {suspicious_tags[plugin]['tag']} bound with early phase {suspicious_tags[plugin]['phase']}"
+            message += f"\tFound in <execution> : {suspicious_tags[plugin]['tag']} \
+                bound with early phase {suspicious_tags[plugin]['phase']}"
             result = True
 
         urls_in_cmd: bool = self.url_as_cmd_argument(effective_pom_path)
         if urls_in_cmd:
-            message += f"\n\nA URL was found to be used as a command argument in <argument> or <script>."
+            message += "\n\nA URL was found to be used as a command argument in <argument> or <script>."
             result = True
 
         suspicious_argline, cmd = self.suspsicious_argline_usage(effective_pom_path)
@@ -105,7 +107,8 @@ class MavenDangerousPomXML(Detector):
 
     def get_effective_pom(self, path: str) -> str:
         """
-        Get the effective pom.xml file of the project in path. The pom.xml is supposed to be in the root directory: {path}/pom.xml
+        Get the effective pom.xml file of the project in path.
+        The pom.xml is supposed to be in the root directory: {path}/pom.xml
         Stores the resulting effective xml in OUTPUT_FILE
         """
         pom_path = os.path.join(path, "pom.xml")
@@ -119,7 +122,7 @@ class MavenDangerousPomXML(Detector):
 
         try:
             # create the effective pom xml
-            result = subprocess.run(
+            subprocess.run(
                 command, cwd=path, check=True, capture_output=True, text=True
             )
             if os.path.exists(effective_pom_path):
@@ -134,7 +137,7 @@ class MavenDangerousPomXML(Detector):
             return effective_pom_path
 
         except subprocess.CalledProcessError as e:
-            raise Exception(f"Error: invalid pom.xml found at {pom_path}")
+            raise Exception(f"Error: invalid pom.xml found at {pom_path}: {e}")
         except Exception as e:
             raise Exception(
                 f"Unexpected error during the effective pom generation from {pom_path}: {e}"
@@ -162,7 +165,8 @@ class MavenDangerousPomXML(Detector):
 
     def untrusted_download_source(self, pom_path: str) -> tuple[bool, list[str]]:
         """
-        Detects when a custom plugin in <repository> or <pluginRepository> is not downloaded from https://repo.maven.apache.org/maven2
+        Detects when a custom plugin in <repository> or <pluginRepository>
+            is not downloaded from https://repo.maven.apache.org/maven2
         Returns a boolean and a list of detected not conform urls
         """
         tree = ET.parse(pom_path)
@@ -185,7 +189,9 @@ class MavenDangerousPomXML(Detector):
 
     def is_malicious_plugin(self, pom_path: str) -> tuple[bool, list]:
         """
-        Detects suspicious plugins in effective pom.xml using an exhaustive list of plugins in Java able to execute code in early lifecycle phases
+        Detects suspicious plugins in effective pom.xml
+        using an exhaustive list of plugins in Java
+        able to execute code in early lifecycle phases
         """
         tree = ET.parse(pom_path)
         root = tree.getroot()
