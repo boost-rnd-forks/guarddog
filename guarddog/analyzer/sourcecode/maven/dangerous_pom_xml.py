@@ -6,6 +6,7 @@ import re
 import logging
 
 from guarddog.analyzer.sourcecode.detector import Detector
+from guarddog.utils.exceptions import PomXmlValidationError
 
 OUTPUT_FILE = "effective-pom.xml"
 NAMESPACE = {"mvn": "http://maven.apache.org/POM/4.0.0"}
@@ -66,7 +67,7 @@ class MavenDangerousPomXML(Detector):
         message: str = ""
         result = False
         if not os.path.isdir(path):
-            print(f"Error: '{path}' is not a directory - no pom.xml analysis.")
+            log.error(f"Error: '{path}' is not a directory - no pom.xml analysis.")
             return False, None
         effective_pom_path: str = self.get_effective_pom(path)
         if not effective_pom_path:
@@ -79,12 +80,12 @@ class MavenDangerousPomXML(Detector):
                 message += f"\t- {url}\n"
             result = True
 
-        untrusted_plugin_source, unstrusted_urls = self.untrusted_download_source(
+        untrusted_plugin_source, untrusted_urls = self.untrusted_download_source(
             effective_pom_path
         )
         if untrusted_plugin_source:
-            message += "\nPlugin(s) downloaded from unstructed source(s): \n"
-            for bad_url in unstrusted_urls:
+            message += "\nPlugin(s) downloaded from untrusted source(s): \n"
+            for bad_url in untrusted_urls:
                 message += f"\t - {bad_url}\n"
             result = True
 
@@ -109,7 +110,7 @@ class MavenDangerousPomXML(Detector):
             message += "\n\nA URL was found to be used as a command argument in <argument> or <script>."
             result = True
 
-        suspicious_argline, cmd = self.suspsicious_argline_usage(effective_pom_path)
+        suspicious_argline, cmd = self.suspicious_argline_usage(effective_pom_path)
         if suspicious_argline:
             message += f"\nA suspicious usage of <argLine> was detected in the effective pom: \n\t {cmd}"
             result = True
@@ -125,7 +126,7 @@ class MavenDangerousPomXML(Detector):
         pom_path = os.path.join(path, "pom.xml")
 
         if not os.path.isfile(pom_path):
-            raise Exception(f"Error: No 'pom.xml' found in '{path}'.")
+            raise FileNotFoundError(f"Error: No 'pom.xml' found in '{path}'.")
         log.debug(f"pom.xml found at {path}/ ")
 
         command = ["mvn", "help:effective-pom", f"-Doutput={OUTPUT_FILE}"]
@@ -142,15 +143,15 @@ class MavenDangerousPomXML(Detector):
                 )
             else:
                 # This case is unlikely if `check=True` is used, but serves as a fallback.
-                raise Exception(
+                raise PomXmlValidationError(
                     f"Error: The effective pom file could not be created from {pom_path}."
                 )
             return effective_pom_path
 
         except subprocess.CalledProcessError as e:
-            raise Exception(f"Error: invalid pom.xml found at {pom_path}: {e}")
+            raise PomXmlValidationError(f"Error: invalid pom.xml found at {pom_path}: {e}")
         except Exception as e:
-            raise Exception(
+            raise PomXmlValidationError(
                 f"Unexpected error during the effective pom generation from {pom_path}: {e}"
             )
 
@@ -183,7 +184,7 @@ class MavenDangerousPomXML(Detector):
         """
         tree = ET.parse(pom_path)
         root = tree.getroot()
-        log.debug("Scanning for unstrusted plugins downloads...\n")
+        log.debug("Scanning for untrusted plugins downloads...\n")
         found = False
         bad_urls = []
         download_urls = [".//mvn:repository/mvn:url", ".//mvn:pluginRepository/mvn:url"]
@@ -254,7 +255,7 @@ class MavenDangerousPomXML(Detector):
         log.debug("\nScanning for dangerous tags ...\n")
         for plugin in root.findall(".//mvn:plugin", NAMESPACE):
             artifact_id = plugin.find("mvn:artifactId", NAMESPACE)
-            plugin_id = self.get_text(artifact_id) or "(unknown‑plugin)"
+            plugin_id = self.get_text(artifact_id) or "(unknown-plugin)"
 
             early_phases = []
             tags_found = []
@@ -302,7 +303,7 @@ class MavenDangerousPomXML(Detector):
                     found = True
         return found
 
-    def suspsicious_argline_usage(self, pom_path: str) -> tuple[bool, Optional[str]]:
+    def suspicious_argline_usage(self, pom_path: str) -> tuple[bool, Optional[str]]:
         """
         Detects suspicious argument in <argLine> tags
         - usage of -javaagent: , able to manipulate bytecode at runtime
@@ -323,7 +324,7 @@ class MavenDangerousPomXML(Detector):
             if "-javaagent:" in cmd:
                 if re.search(r"(https?|ftp):\/\/", cmd) or re.search(r"\.jar", cmd):
                     suspicious = True
-                    print("Suspicious url or .jar with -javaagent: in <argLine>")
+                    log.warning("Suspicious url or .jar with -javaagent: in <argLine>")
             elif re.search(r"\${.*}", cmd):
                 suspicious = True
                 log.debug("Suspicious dynamic parameter ${...} in <argLine>")

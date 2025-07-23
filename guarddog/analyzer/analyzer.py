@@ -325,7 +325,6 @@ class Analyzer:
 
         Args:
             path (str): path to package
-            info (dict): package information given by PyPI Json API
             rules (set, optional): Set of metadata rules to analyze. Defaults to all rules.
 
         Returns:
