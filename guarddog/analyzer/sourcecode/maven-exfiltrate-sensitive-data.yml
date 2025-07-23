@@ -1,0 +1,107 @@
+rules:
+  - id: maven-exfiltrate-sensitive-data
+    mode: taint
+    message: This package is exfiltrating sensitive data to a remote server
+    metadata:
+      description: Identify when a package reads and exfiltrates sensitive data from the local system
+    pattern-sources:
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern: System.getenv($VAR)
+                  - pattern: System.getProperty($VAR)
+              - metavariable-regex:
+                  metavariable: $VAR
+                  regex: ("AWS_ACCESS_KEY_ID"|"AWS_SECRET_ACCESS_KEY"|"AWS_SESSION_TOKEN"|"GOOGLE_APPLICATION_CREDENTIALS"|"AZURE_CLIENT_SECRET"|"CI_JOB_TOKEN"|"GITHUB_TOKEN"|"GITLAB_TOKEN"|"API_KEY"|"SECRET_KEY"|"ACCESS_TOKEN"|"TOKEN"|"PASSWORD")
+          
+          - pattern: InetAddress.getLocalHost().getHostName()
+          - pattern: InetAddress.getLocalHost().getHostAddress()
+          - pattern: System.getProperty("user.name")
+          - pattern: System.getProperty("user.home")
+          - pattern: System.getProperty("user.dir")
+          - pattern: ManagementFactory.getRuntimeMXBean().getName()
+          
+          - patterns:
+              - pattern-either:
+                  - pattern: Files.readAllBytes(Paths.get($FILE))
+                  - pattern: Files.readString(Paths.get($FILE))
+                  - pattern: Files.readAllLines(Paths.get($FILE))
+                  - pattern: new FileInputStream($FILE)
+                  - pattern: new FileReader($FILE)
+                  - pattern: new BufferedReader(new FileReader($FILE))
+              - metavariable-regex:
+                  metavariable: $FILE
+                  regex: (".*/.aws/credentials"|".*/.docker/config.json"|".*/.kube/config"|".*/.ssh/.*"|".*/.git-credentials"|".*/.netrc"|".*/.npmrc"|"/etc/passwd"|"/etc/hosts"|".*/.m2/settings.xml"|".*\\.p12"|".*\\.jks"|".*keystore.*"|".*truststore.*")
+          
+          - patterns:
+              - pattern-either:
+                  - pattern: Runtime.getRuntime().exec($CMD)
+                  - pattern: ProcessBuilder($CMD).start()
+                  - pattern: new ProcessBuilder($CMD)
+              - metavariable-regex:
+                  metavariable: $CMD
+                  regex: ("env"|"printenv"|"set")
+
+    pattern-sinks:
+      - pattern-either:
+          - patterns:
+              - pattern-inside: |
+                  $CONN = (HttpURLConnection) new URL(...).openConnection();
+                  ...
+              - pattern-either:
+                  - pattern: $CONN.getOutputStream().write($DATA)
+                  - pattern: $CONN.setRequestProperty($HEADER, $DATA)
+          
+          - patterns:
+              - pattern-inside: |
+                  $SOCKET = new Socket(...);
+                  ...
+              - pattern: $SOCKET.getOutputStream().write($DATA)
+          
+          - patterns:
+              - pattern-inside: |
+                  $WRITER = new PrintWriter($SOCKET.getOutputStream());
+                  ...
+              - pattern: $WRITER.println($DATA)
+          
+          - patterns:
+              - pattern-inside: |
+                  $CLIENT = HttpClients.createDefault();
+                  ...
+                  $REQUEST = new HttpPost(...);
+                  ...
+              - pattern: $REQUEST.setEntity(new StringEntity($DATA))
+          
+          - patterns:
+              - pattern-inside: |
+                  $CLIENT = HttpClients.createDefault();
+                  ...
+              - pattern: $CLIENT.execute($REQUEST)
+          
+          - patterns:
+              - pattern-inside: |
+                  $REST = new RestTemplate();
+                  ...
+              - pattern: $REST.postForObject($URL, $DATA, ...)
+          
+          - patterns:
+              - pattern-inside: |
+                  $CLIENT = new OkHttpClient();
+                  ...
+              - pattern: RequestBody.create($DATA, ...)
+          
+          - patterns:
+              - pattern-inside: |
+                  $CLIENT = new OkHttpClient();
+                  ...
+              - pattern: $CLIENT.newCall(...).execute()
+          
+          - patterns:
+              - pattern: System.out.println($MSG)
+              - metavariable-regex:
+                  metavariable: $MSG
+                  regex: (".*[Ss]ending.*attacker.*"|".*[Aa]ttacker.*")
+
+    languages:
+      - java
+    severity: WARNING 
