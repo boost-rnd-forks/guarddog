@@ -95,12 +95,6 @@ rules:
                   $CLIENT = new OkHttpClient();
                   ...
               - pattern: $CLIENT.newCall(...).execute()
-          
-          - patterns:
-              - pattern: System.out.println($MSG)
-              - metavariable-regex:
-                  metavariable: $MSG
-                  regex: (".*[Ss]ending.*attacker.*"|".*[Aa]ttacker.*")
 
     languages:
       - java

