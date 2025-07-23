@@ -191,8 +191,8 @@ class MavenDangerousPomXML(Detector):
         for path in download_urls:
             for elem in root.findall(path, NAMESPACE):
                 url = self.get_text(elem)
-                for url in TRUSTED_REPOS:
-                    if not url.startswith(url):
+                for trusted_repo in TRUSTED_REPOS:
+                    if not url.startswith(trusted_repo):
                         found = True
                         bad_urls.append(url)
                         log.debug(f"Untrusted plugin source {url}.")
