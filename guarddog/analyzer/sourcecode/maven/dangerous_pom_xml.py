@@ -101,8 +101,10 @@ class MavenDangerousPomXML(Detector):
         suspicious_tags: dict = self.dangerous_tags_combinations(effective_pom_path)
         for plugin in suspicious_tags:
             message += f"\nSuspicious tags combination found in plugin {plugin}: \n"
-            message += f"\tFound in <execution> : {suspicious_tags[plugin]['tag']} \
-                bound with early phase {suspicious_tags[plugin]['phase']}"
+            message += (
+                f"\tFound in <execution> : {suspicious_tags[plugin]['tag']} "
+                f"bound with early phase {suspicious_tags[plugin]['phase']}"
+            )
             result = True
 
         urls_in_cmd: bool = self.url_as_cmd_argument(effective_pom_path)
@@ -110,9 +112,13 @@ class MavenDangerousPomXML(Detector):
             message += "\n\nA URL was found to be used as a command argument in <argument> or <script>."
             result = True
 
-        suspicious_argline, cmd = self.suspicious_argline_usage(effective_pom_path)
+        suspicious_argline, suspicious_commands = self.suspicious_argline_usage(
+            effective_pom_path
+        )
         if suspicious_argline:
-            message += f"\nA suspicious usage of <argLine> was detected in the effective pom: \n\t {cmd}"
+            message += "\nA suspicious usage of <argLine> was detected in the effective pom: \n"
+            for cmd in suspicious_commands:
+                message += f"\t- <argLine>{cmd}"
             result = True
 
         return result, message
@@ -149,7 +155,9 @@ class MavenDangerousPomXML(Detector):
             return effective_pom_path
 
         except subprocess.CalledProcessError as e:
-            raise PomXmlValidationError(f"Error: invalid pom.xml found at {pom_path}: {e}")
+            raise PomXmlValidationError(
+                f"Error: invalid pom.xml found at {pom_path}: {e}"
+            )
         except Exception as e:
             raise PomXmlValidationError(
                 f"Unexpected error during the effective pom generation from {pom_path}: {e}"
@@ -259,9 +267,9 @@ class MavenDangerousPomXML(Detector):
 
             early_phases = []
             tags_found = []
-            phase = False
-            has_susp_tag = False
             for execution in plugin.findall(".//mvn:execution", NAMESPACE):
+                phase = False
+                has_susp_tag = False
                 #  <execution> blocks bound to early phase
                 phase_elem = execution.find("mvn:phase", NAMESPACE)
                 phase_txt = self.get_text(phase_elem).lower()
@@ -303,7 +311,7 @@ class MavenDangerousPomXML(Detector):
                     found = True
         return found
 
-    def suspicious_argline_usage(self, pom_path: str) -> tuple[bool, Optional[str]]:
+    def suspicious_argline_usage(self, pom_path: str) -> tuple[bool, list[str]]:
         """
         Detects suspicious argument in <argLine> tags
         - usage of -javaagent: , able to manipulate bytecode at runtime
@@ -313,10 +321,14 @@ class MavenDangerousPomXML(Detector):
         or
         - dynamic parameters: ${...}
         - suspicious commands (curl, wget, sh...)
+        Returns
+            - Bool: if suspicious command found in <argLine>
+            - list | None: list of suspicious commands found
         """
         tree = ET.parse(pom_path)
         root = tree.getroot()
         suspicious = False
+        suspicious_commands = []
         log.debug("\nScanning for <argLine> commands ...\n")
         argLine = root.findall(".//mvn:argLine", NAMESPACE)
         for elem in argLine:
@@ -324,17 +336,17 @@ class MavenDangerousPomXML(Detector):
             if "-javaagent:" in cmd:
                 if re.search(r"(https?|ftp):\/\/", cmd) or re.search(r"\.jar", cmd):
                     suspicious = True
+                    suspicious_commands.append(cmd)
                     log.warning("Suspicious url or .jar with -javaagent: in <argLine>")
             elif re.search(r"\${.*}", cmd):
                 suspicious = True
+                suspicious_commands.append(cmd)
                 log.debug("Suspicious dynamic parameter ${...} in <argLine>")
             elif re.search(
                 r"(bash|sh|nc|curl|wget|powershell|start|exec|eval|sys|scp|rsync|ncat|telnet|socat)",
                 cmd,
             ):
                 suspicious = True
+                suspicious_commands.append(cmd)
                 log.debug("Suspicious command in <argLine> (curl, wget, sh...)")
-        if suspicious:
-            return suspicious, cmd
-        else:
-            return suspicious, None
+        return suspicious, suspicious_commands
