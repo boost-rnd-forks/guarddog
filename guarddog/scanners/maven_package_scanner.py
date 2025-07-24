@@ -153,8 +153,12 @@ class MavenPackageScanner(PackageScanner):
         """
         with zipfile.ZipFile(jar_path, "r") as jar:
             log.debug("Extracting jar package...")
+            output_dir_abs = os.path.abspath(output_dir)
             for file in jar.namelist():
-                safe_path = os.path.join(output_dir, file)
+                safe_path = os.path.abspath(os.path.join(output_dir, file))
+                if not safe_path.startswith(output_dir_abs):
+                    log.warning(f"Skipping potentially unsafe file: {file}")
+                    continue
                 if file.endswith("/"):  # It's a directory
                     os.makedirs(safe_path, exist_ok=True)
                     continue
