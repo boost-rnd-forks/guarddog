@@ -15,7 +15,9 @@ from guarddog.scanners.scanner import PackageScanner
 log = logging.getLogger("guarddog")
 
 MAVEN_CENTRAL_BASE_URL = "https://repo1.maven.org/maven2"
-CFR_JAR_PATH = "../cfr-0.152.jar"
+CFR_JAR_PATH = os.environ.get(
+    "CFR_JAR_PATH", os.path.abspath(os.path.join(os.path.dirname(__file__), "../cfr-0.152.jar"))
+)
 
 
 class MavenPackageScanner(PackageScanner):
@@ -65,7 +67,7 @@ class MavenPackageScanner(PackageScanner):
             self.extract_jar(jar_path, decompressed_path)
         else:
             log.debug(f"Could not extract {jar_path}")
-        if os.path.exists(decompressed_path) and os.path.getsize(decompressed_path) > 0:
+        if os.path.exists(decompressed_path) and os.path.isdir(decompressed_path) and len(os.listdir(decompressed_path)) > 0:
             log.debug(f"Successfully extracted jar in {decompressed_path}.")
         else:
             log.error(f"The project could not be extracted from {jar_path}")
@@ -84,7 +86,7 @@ class MavenPackageScanner(PackageScanner):
                 log.debug("Same pom.xml in Maven and decompressed project!")
             else:
                 log.warning("The 2 found pom.xml for the project differ.")
-                log.warning(f"\t -pom retrived from Maven: {pom_path}")
+                log.warning(f"\t -pom retrieved from Maven: {pom_path}")
                 log.warning(f"\t -pom found in decompressed package: {pom_jar_path}")
                 pom_path = pom_jar_path
         # move pom file in decompiled project for source code analysis
@@ -108,7 +110,7 @@ class MavenPackageScanner(PackageScanner):
             * `version` (str): version of the package
             * `directory` (str): name of the dir to host the package. Created if does not exist
         Returns:
-            Paths of the downloded jar file and the corresponding downloaded pom.xml
+            Paths of the downloaded jar file and the corresponding downloaded pom.xml
         """
 
         group_path = group_id.replace(".", "/")
@@ -127,7 +129,7 @@ class MavenPackageScanner(PackageScanner):
         # We could also use the dowload_decompressed method from scanner.py
         try:
             for url, path in [(jar_url, jar_path), (pom_url, pom_path)]:
-                r = requests.get(url, stream=True)
+                r = requests.get(url, stream=True, timeout=10, verify=True)
                 if r.status_code != 200:
                     raise Exception(
                         f"Failed to download Maven package from {url} (status {r.status_code})"
@@ -166,6 +168,9 @@ class MavenPackageScanner(PackageScanner):
         Finds the pom.xml in the package at `path` if exists
         """
         pom_dir = os.path.join(path, "META-INF", "maven", groupId, artifactId)
+        if not os.path.isdir(pom_dir):
+            log.warning(f"Directory {pom_dir} does not exist. Cannot look for pom.xml.")
+            return None
         log.debug(f"Looking for pom.xml in {os.listdir(pom_dir)}")
         pom_path = os.path.join(pom_dir, "pom.xml")
         if os.path.isfile(pom_path):
@@ -241,7 +246,7 @@ class MavenPackageScanner(PackageScanner):
         version: str,
     ) -> dict:
         """
-        Returns a dict with package info from args and retrived from parsing pom.xml
+        Returns a dict with package info from args and retrieved from parsing pom.xml
         "info"
             - "groupid"
             - "artifactid"
