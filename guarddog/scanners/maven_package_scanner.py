@@ -17,7 +17,7 @@ log = logging.getLogger("guarddog")
 MAVEN_CENTRAL_BASE_URL = "https://repo1.maven.org/maven2"
 CFR_JAR_PATH = os.environ.get(
     "CFR_JAR_PATH",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "../cfr-0.152.jar")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../cfr-0.152.jar")),
 )
 
 
@@ -96,6 +96,7 @@ class MavenPackageScanner(PackageScanner):
                 pom_path = pom_jar_path
         # move pom file in decompiled project for source code analysis
         shutil.move(pom_path, decompiled_path)
+        pom_path = os.path.join(decompiled_path, "pom.xml")
 
         # package_info
         package_info: dict = self.get_package_info(
