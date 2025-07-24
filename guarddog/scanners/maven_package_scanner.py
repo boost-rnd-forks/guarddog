@@ -16,7 +16,8 @@ log = logging.getLogger("guarddog")
 
 MAVEN_CENTRAL_BASE_URL = "https://repo1.maven.org/maven2"
 CFR_JAR_PATH = os.environ.get(
-    "CFR_JAR_PATH", os.path.abspath(os.path.join(os.path.dirname(__file__), "../cfr-0.152.jar"))
+    "CFR_JAR_PATH",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../cfr-0.152.jar")),
 )
 
 
@@ -67,7 +68,11 @@ class MavenPackageScanner(PackageScanner):
             self.extract_jar(jar_path, decompressed_path)
         else:
             log.debug(f"Could not extract {jar_path}")
-        if os.path.exists(decompressed_path) and os.path.isdir(decompressed_path) and len(os.listdir(decompressed_path)) > 0:
+        if (
+            os.path.exists(decompressed_path)
+            and os.path.isdir(decompressed_path)
+            and len(os.listdir(decompressed_path)) > 0
+        ):
             log.debug(f"Successfully extracted jar in {decompressed_path}.")
         else:
             log.error(f"The project could not be extracted from {jar_path}")
