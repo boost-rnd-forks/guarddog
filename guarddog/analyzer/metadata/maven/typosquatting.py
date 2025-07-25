@@ -41,7 +41,9 @@ class MavenTyposquatDetector(TyposquatDetector):
 
         # File should always exist - raise error if not found
         if not os.path.exists(top_packages_path):
-            raise FileNotFoundError(f"Maven cache file not found at {top_packages_path}. Please run maven_scraper.py first.")
+            error_msg = (f"Maven cache file not found at {top_packages_path}. "
+                        "Please run maven_scraper.py first.")
+            raise FileNotFoundError(error_msg)
 
         update_time = datetime.fromtimestamp(os.path.getmtime(top_packages_path))
         is_cache_fresh = datetime.now() - update_time <= timedelta(days=30)
@@ -50,7 +52,9 @@ class MavenTyposquatDetector(TyposquatDetector):
         try:
             with open(top_packages_path, "r") as top_packages_file:
                 cached_data = json.load(top_packages_file)
-            log.debug(f"Successfully read cache file: {len(cached_data) if isinstance(cached_data, list) else 'structured data'}")
+            cache_desc = (len(cached_data) if isinstance(cached_data, list)
+                         else 'structured data')
+            log.debug(f"Successfully read cache file: {cache_desc}")
         except Exception as e:
             raise RuntimeError(f"Failed to read Maven cache file: {e}")
 
@@ -64,15 +68,16 @@ class MavenTyposquatDetector(TyposquatDetector):
                 log.warning("Fresh cache file is empty or invalid, attempting refresh")
 
         # Cache is stale or empty, try to refresh it
-        log.info(f"Cache is {(datetime.now() - update_time).days} days old. Attempting to refresh...")
+        cache_age = (datetime.now() - update_time).days
+        log.info(f"Cache is {cache_age} days old. Attempting to refresh...")
         success = self._run_maven_scraper(top_packages_path)
-        
+
         if success:
             # Read the newly generated file
             try:
                 with open(top_packages_path, "r") as top_packages_file:
                     fresh_data = json.load(top_packages_file)
-                
+
                 packages = self._extract_packages_from_data(fresh_data)
                 if packages:
                     log.info("✅ Successfully refreshed Maven package cache")
@@ -83,26 +88,27 @@ class MavenTyposquatDetector(TyposquatDetector):
                 log.warning(f"Failed to read newly generated file: {e}")
 
         # Scraper failed - use the stale cache as fallback
-        log.warning(f"Maven scraper failed. Using stale cache ({(datetime.now() - update_time).days} days old)")
+        cache_age = (datetime.now() - update_time).days
+        log.warning(f"Maven scraper failed. Using stale cache ({cache_age} days old)")
         packages = self._extract_packages_from_data(cached_data)
         if packages:
             return packages
-        
+
         # If we reach here, both scraper and cache failed
         raise RuntimeError("Maven cache is unusable and scraper failed. Cannot load package data.")
 
     def _extract_packages_from_data(self, data) -> set:
         """
         Extract Maven packages from JSON data (handles both formats).
-        
+
         Args:
             data: JSON data (either list or structured dict)
-            
+
         Returns:
             set: Set of Maven package names
         """
         packages = set()
-        
+
         # Handle both old format (simple array) and new format (structured JSON)
         if isinstance(data, list):
             # Old format: simple array of package names
@@ -113,7 +119,7 @@ class MavenTyposquatDetector(TyposquatDetector):
             log.debug("Using new structured format")
             popular_packages = data.get("popular_packages", [])
             packages.update(popular_packages)
-            
+
             # Also add Maven packages from dependencies if available
             dependencies = data.get("dependencies", [])
             maven_deps = set()
@@ -126,39 +132,39 @@ class MavenTyposquatDetector(TyposquatDetector):
                         # Convert slashes to colons for proper Maven format
                         package_name = package_name.replace('/', ':')
                         maven_deps.add(package_name)
-            
+
             packages.update(maven_deps)
             log.debug(f"Loaded {len(popular_packages)} popular packages + {len(maven_deps)} from dependencies")
-        
+
         return packages
 
     def _run_maven_scraper(self, output_file: str) -> bool:
         """
         Run the Maven scraper to generate fresh package data.
-        
+
         Args:
             output_file: Path where to save the scraped data
-            
+
         Returns:
             bool: True if scraping succeeded, False otherwise
         """
         try:
             # Import the Maven scraper
             from guarddog.analyzer.metadata.maven.maven_scraper import MavenScraper
-            
+
             log.info("Initializing Maven scraper...")
             scraper = MavenScraper()
-            
+
             log.info("Starting Maven package scraping (this may take a few minutes)...")
             success = scraper.scrape_mvn_and_output_json(output_file)
-            
+
             if success:
                 log.info("Maven scraper completed successfully!")
                 return True
             else:
                 log.error("Maven scraper failed")
                 return False
-                
+
         except ImportError as e:
             log.error(f"Failed to import Maven scraper: {e}")
             return False
@@ -219,7 +225,7 @@ class MavenTyposquatDetector(TyposquatDetector):
         Returns:
             list: list of confused terms
         """
-        confused_forms = []
+        confused_forms: list[str] = []
 
         if ":" not in package_name:
             return confused_forms
