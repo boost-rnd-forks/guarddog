@@ -1,11 +1,8 @@
 import json
 import logging
 import os
-import re
-import time
 from datetime import datetime, timedelta
-from typing import Optional, Set, List
-import requests
+from typing import Optional
 
 from guarddog.analyzer.metadata.typosquatting import TyposquatDetector
 from guarddog.utils.config import TOP_PACKAGES_CACHE_LOCATION
@@ -26,8 +23,7 @@ class MavenTyposquatDetector(TyposquatDetector):
     def _get_top_packages(self) -> set:
         """
         Gets Maven packages using the same 30-day caching pattern as PyPI
-        and NPM. Follows exact same architecture - caching logic in detector,
-        not external utility.
+        and NPM. Automatically calls Maven scraper when cache is stale.
 
         Returns:
             set: Set of popular Maven packages in "groupId:artifactId" format
@@ -42,260 +38,137 @@ class MavenTyposquatDetector(TyposquatDetector):
 
         top_packages_path = os.path.join(resources_dir, top_packages_filename)
 
-        top_packages_information = None
-
-        # Check if file exists and is recent (< 30 days old) - same pattern
-        # as PyPI/NPM
-        if top_packages_filename in os.listdir(resources_dir):
+        # Check if file exists and is recent (< 30 days old)
+        should_refresh = True
+        if os.path.exists(top_packages_path):
             update_time = datetime.fromtimestamp(
                 os.path.getmtime(top_packages_path))
 
             if datetime.now() - update_time <= timedelta(days=30):
                 log.debug(
                     f"Using cached Maven packages from {top_packages_path}")
-                with open(top_packages_path, "r") as top_packages_file:
-                    top_packages_information = json.load(top_packages_file)
-
-                # If cached file is empty, treat it as no cache and fetch
-                # dynamically
-                if not top_packages_information:
-                    log.info(
-                        "Cached file is empty, triggering dynamic generation")
-                    top_packages_information = None
-
-        # If no recent cache or empty cache, try to fetch dynamically and
-        # update the file
-        if top_packages_information is None:
-            log.info(
-                "Fetching Maven packages dynamically using Python scraper...")
-
-            try:
-                dynamic_packages = self._fetch_maven_packages_with_python()
-                if dynamic_packages:
-                    # Update the resources file directly - same as PyPI/NPM
-                    top_packages_information = sorted(list(dynamic_packages))
-                    with open(top_packages_path, "w") as f:
-                        json.dump(top_packages_information, f,
-                                  ensure_ascii=False, indent=2)
-                    log.info(
-                        f"Updated {top_packages_path} with "
-                        f"{len(top_packages_information)} packages")
-                else:
-                    # If scraping fails, read existing file
-                    log.warning(
-                        "Python scraper failed, using existing cached data")
-                    if os.path.exists(top_packages_path):
-                        with open(top_packages_path, "r") as top_packages_file:
-                            top_packages_information = json.load(
-                                top_packages_file)
-
-            except Exception as e:
-                log.warning(f"Dynamic fetching failed: {e}")
-                # Fallback to existing file
-                if os.path.exists(top_packages_path):
+                try:
                     with open(top_packages_path, "r") as top_packages_file:
-                        top_packages_information = json.load(top_packages_file)
+                        data = json.load(top_packages_file)
+                    
+                    packages = self._extract_packages_from_data(data)
+                    if packages:
+                        should_refresh = False
+                        return packages
+                    else:
+                        log.warning("Cached file is empty or invalid")
+                except Exception as e:
+                    log.warning(f"Failed to read cached file: {e}")
+
+        # If no recent cache or file is invalid, run Maven scraper
+        if should_refresh:
+            log.info("Cache missing or stale. Running Maven scraper...")
+            success = self._run_maven_scraper(top_packages_path)
+            
+            if success:
+                # Read the newly generated file
+                try:
+                    with open(top_packages_path, "r") as top_packages_file:
+                        data = json.load(top_packages_file)
+                    
+                    packages = self._extract_packages_from_data(data)
+                    if packages:
+                        return packages
+                    else:
+                        log.warning("Newly generated file is empty or invalid")
+                except Exception as e:
+                    log.warning(f"Failed to read newly generated file: {e}")
+            else:
+                log.warning("Maven scraper failed")
 
         # Final fallback if everything fails
-        if top_packages_information is None:
-            log.warning(
-                "All package sources failed, using minimal essential packages")
-            top_packages_information = list(
-                self._get_essential_maven_packages())
+        log.warning(
+            "All package sources failed, using essential packages as fallback"
+        )
+        return self._get_essential_maven_packages()
 
-        return set(top_packages_information)
-
-    def _scrape_mvn_popular_page(self, page: int) -> List[str]:
+    def _extract_packages_from_data(self, data) -> set:
         """
-        Scrape popular Maven packages from mvnrepository.com for a specific
-        page. Python equivalent of the Go getMvnPopularPage function.
-
+        Extract Maven packages from JSON data (handles both formats).
+        
         Args:
-            page (int): Page number to scrape
-
+            data: JSON data (either list or structured dict)
+            
         Returns:
-            List[str]: List of package names in "groupId:artifactId" format
+            set: Set of Maven package names
         """
-        url = f"https://mvnrepository.com/popular?p={page}"
+        packages = set()
+        
+        # Handle both old format (simple array) and new format (structured JSON)
+        if isinstance(data, list):
+            # Old format: simple array of package names
+            log.debug("Using legacy format (simple array)")
+            packages.update(data)
+        elif isinstance(data, dict):
+            # New format: structured JSON with popular_packages
+            log.debug("Using new structured format")
+            popular_packages = data.get("popular_packages", [])
+            packages.update(popular_packages)
+            
+            # Also add Maven packages from dependencies if available
+            dependencies = data.get("dependencies", [])
+            maven_deps = set()
+            for dep in dependencies:
+                if dep.startswith('pkg:maven/'):
+                    # Extract package name from PURL: pkg:maven/groupId:artifactId@version
+                    maven_part = dep[10:]  # Remove 'pkg:maven/'
+                    if '@' in maven_part:
+                        package_name = maven_part.split('@')[0]  # Remove version
+                        # Convert slashes to colons for proper Maven format
+                        package_name = package_name.replace('/', ':')
+                        maven_deps.add(package_name)
+            
+            packages.update(maven_deps)
+            log.debug(f"Loaded {len(popular_packages)} popular packages + {len(maven_deps)} from dependencies")
+        
+        return packages
 
-        headers = {
-            'User-Agent': (
-                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-                '(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
-        }
-
-        try:
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-
-            # Use regex to extract artifact links instead of BeautifulSoup
-            html_content = response.text
-            packages = set()
-
-            # Check if "Top Projects" section exists in the page
-            if "Top Projects" not in html_content:
-                log.debug(f"No 'Top Projects' section found on page {page}")
-                return []
-
-            # Extract all /artifact/groupId/artifactId patterns using regex
-            # Pattern matches: href="/artifact/groupId/artifactId"
-            artifact_pattern = r'href="\/artifact\/([^\/\s"]+)\/([^\/\s"]+)"'
-            matches = re.findall(artifact_pattern, html_content)
-
-            for group_id, artifact_id in matches:
-                # Skip empty matches and validate format
-                if group_id and artifact_id and '.' in group_id:
-                    packages.add(f"{group_id}:{artifact_id}")
-
-            return list(packages)
-
-        except Exception as e:
-            log.warning(f"Failed to scrape mvnrepository.com page {page}: {e}")
-            return []
-
-    def _get_deps_dev_default_version(self, package_name: str) -> (
-            Optional[str]):
+    def _run_maven_scraper(self, output_file: str) -> bool:
         """
-        Get default version from deps.dev API.
-        Python equivalent of the Go getDepsDevDefaultVersion function.
-
+        Run the Maven scraper to generate fresh package data.
+        
         Args:
-            package_name (str): Package name in "groupId:artifactId" format
-
+            output_file: Path where to save the scraped data
+            
         Returns:
-            Optional[str]: Default version if found, None otherwise
+            bool: True if scraping succeeded, False otherwise
         """
-        url = (f"https://api.deps.dev/v3alpha/systems/maven/packages/"
-               f"{package_name}")
-
         try:
-            response = requests.get(url, timeout=10)
-            if response.status_code != 200:
-                return None
-
-            data = response.json()
-            for version in data.get('versions', []):
-                if version.get('isDefault'):
-                    return version.get('versionKey', {}).get('version')
-
+            # Import the Maven scraper
+            from guarddog.analyzer.metadata.maven.maven_scraper import MavenScraper
+            
+            log.info("Initializing Maven scraper...")
+            scraper = MavenScraper()
+            
+            log.info("Starting Maven package scraping (this may take a few minutes)...")
+            success = scraper.scrape_mvn_and_output_json(output_file)
+            
+            if success:
+                log.info("✅ Maven scraper completed successfully!")
+                return True
+            else:
+                log.error("❌ Maven scraper failed")
+                return False
+                
+        except ImportError as e:
+            log.error(f"Failed to import Maven scraper: {e}")
+            return False
         except Exception as e:
-            log.debug(f"Failed to get default version for {package_name}: {e}")
+            log.error(f"Error running Maven scraper: {e}")
+            return False
 
-        return None
-
-    def _get_deps_dev_dependencies(self, package_name: str, version: str) -> (
-            List[str]):
+    def _get_essential_maven_packages(self) -> set:
         """
-        Get dependencies from deps.dev API.
-        Python equivalent of the Go getDepsDevDependencies function.
-
-        Args:
-            package_name (str): Package name in "groupId:artifactId" format
-            version (str): Package version
-
-        Returns:
-            List[str]: List of dependency package names
-        """
-        url = (f"https://api.deps.dev/v3alpha/systems/maven/packages/"
-               f"{package_name}/versions/{version}:dependencies")
-
-        try:
-            response = requests.get(url, timeout=10)
-            if response.status_code != 200:
-                return []
-
-            data = response.json()
-            dependencies = []
-
-            for node in data.get('nodes', []):
-                version_key = node.get('versionKey', {})
-                if version_key.get('system') == 'maven':
-                    dep_name = version_key.get('name', '')
-                    if dep_name:
-                        dependencies.append(dep_name)
-
-            return dependencies
-
-        except Exception as e:
-            log.debug(
-                f"Failed to get dependencies for {package_name}@{version}: "
-                f"{e}")
-
-        return []
-
-    def _fetch_maven_packages_with_python(self) -> Set[str]:
-        """
-        Pure Python implementation of Maven package fetching.
-        Replaces the Go script with equivalent Python functionality.
-
-        Returns:
-            Set[str]: Set of packages if successful, empty set if failed
-        """
-        all_packages = set()
-
-        log.info("Scraping Maven packages from mvnrepository.com...")
-
-        # Strategy 1: Scrape mvnrepository.com popular pages (15 pages for
-        # good coverage)
-        try:
-            for page in range(1, 16):  # Pages 1-15
-                packages = self._scrape_mvn_popular_page(page)
-                if packages:
-                    all_packages.update(packages)
-                    log.debug(
-                        f"Scraped {len(packages)} packages from page {page}")
-                else:
-                    # If we get no packages, we might have hit the end
-                    break
-
-                time.sleep(0.5)
-
-            log.info(
-                f"Scraped {len(all_packages)} packages from mvnrepository.com")
-
-        except Exception as e:
-            log.warning(f"Failed to scrape mvnrepository.com: {e}")
-
-        # Strategy 2: Expand with dependencies using deps.dev API
-        if all_packages:
-            try:
-                log.info(
-                    "Expanding package list with dependencies from deps.dev")
-                base_packages = list(all_packages)[:50]  # Limit to avoid too
-                # many API calls
-                dependency_packages = set()
-
-                for package in base_packages:
-                    version = self._get_deps_dev_default_version(package)
-                    if version:
-                        deps = self._get_deps_dev_dependencies(
-                            package, version)
-                        dependency_packages.update(deps)
-
-                    time.sleep(0.1)
-
-                all_packages.update(dependency_packages)
-                log.info(
-                    f"Added {len(dependency_packages)} dependency packages")
-
-            except Exception as e:
-                log.warning(f"Failed to expand with dependencies: {e}")
-
-        # Strategy 3: Always include essential packages
-        essential_packages = self._get_essential_maven_packages()
-        all_packages.update(essential_packages)
-
-        log.info(f"Final package count: {len(all_packages)} (including "
-                 f"{len(essential_packages)} essential)")
-        return all_packages
-
-    def _get_essential_maven_packages(self) -> Set[str]:
-        """
-        Returns a curated set of essential Maven packages as final fallback.
+        Returns a curated set of essential Maven packages as fallback.
         These are the most critical packages that should always be included.
 
         Returns:
-            Set[str]: Essential Maven packages
+            set: Essential Maven packages
         """
         return {
             # Spring Boot ecosystem (most popular)
@@ -541,3 +414,6 @@ class MavenTyposquatDetector(TyposquatDetector):
 if __name__ == "__main__":
     detector = MavenTyposquatDetector()
     packages = detector._get_top_packages()
+    print(f"Loaded {len(packages)} Maven packages")
+    for pkg in sorted(list(packages))[:10]:
+        print(f"  - {pkg}")
