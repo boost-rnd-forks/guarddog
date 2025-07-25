@@ -18,7 +18,7 @@ class MavenScraper:
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                          '(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+                           '(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
         })
 
     def url_encode(self, text: str) -> str:
@@ -331,7 +331,7 @@ class MavenScraper:
 
             logger.info(f"Results written to {output_file}")
             summary = (f"Summary: {len(all_packages)} popular packages, "
-                       f"{len(dependencies_list)} dependencies, {len(github_repos)} GitHub repos")
+                     f"{len(dependencies_list)} dependencies, {len(github_repos)} GitHub repos")
             logger.info(summary)
             return True
 
@@ -354,4 +354,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

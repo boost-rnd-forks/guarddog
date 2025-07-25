@@ -42,7 +42,7 @@ class MavenTyposquatDetector(TyposquatDetector):
         # File should always exist - raise error if not found
         if not os.path.exists(top_packages_path):
             error_msg = (f"Maven cache file not found at {top_packages_path}. "
-                       "Please run maven_scraper.py first.")
+                           "Please run maven_scraper.py first.")
             raise FileNotFoundError(error_msg)
 
         update_time = datetime.fromtimestamp(os.path.getmtime(top_packages_path))
@@ -53,7 +53,7 @@ class MavenTyposquatDetector(TyposquatDetector):
             with open(top_packages_path, "r") as top_packages_file:
                 cached_data = json.load(top_packages_file)
             cache_desc = (len(cached_data) if isinstance(cached_data, list)
-                        else 'structured data')
+                          else 'structured data')
             log.debug(f"Successfully read cache file: {cache_desc}")
         except Exception as e:
             raise RuntimeError(f"Failed to read Maven cache file: {e}")
