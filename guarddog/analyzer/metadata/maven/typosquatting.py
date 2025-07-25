@@ -1,11 +1,11 @@
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime, timedelta
 from typing import Optional, Set, List
 import requests
-from bs4 import BeautifulSoup
 
 from guarddog.analyzer.metadata.typosquatting import TyposquatDetector
 from guarddog.utils.config import TOP_PACKAGES_CACHE_LOCATION
@@ -14,8 +14,9 @@ log = logging.getLogger("guarddog")
 
 
 class MavenTyposquatDetector(TyposquatDetector):
-    """Detector for typosquatting attacks for Maven packages. Checks for distance one Levenshtein,
-    one-off character swaps, permutations around hyphens, and substrings.
+    """Detector for typosquatting attacks for Maven packages. Checks for
+    distance one Levenshtein, one-off character swaps, permutations around
+    hyphens, and substrings.
 
     Attributes:
         popular_packages (set): set of top Maven packages with 30-day caching,
@@ -24,8 +25,9 @@ class MavenTyposquatDetector(TyposquatDetector):
 
     def _get_top_packages(self) -> set:
         """
-        Gets Maven packages using the same 30-day caching pattern as PyPI and NPM.
-        Follows exact same architecture - caching logic in detector, not external utility.
+        Gets Maven packages using the same 30-day caching pattern as PyPI
+        and NPM. Follows exact same architecture - caching logic in detector,
+        not external utility.
 
         Returns:
             set: Set of popular Maven packages in "groupId:artifactId" format
@@ -42,23 +44,30 @@ class MavenTyposquatDetector(TyposquatDetector):
 
         top_packages_information = None
 
-        # Check if file exists and is recent (< 30 days old) - same pattern as PyPI/NPM
+        # Check if file exists and is recent (< 30 days old) - same pattern
+        # as PyPI/NPM
         if top_packages_filename in os.listdir(resources_dir):
-            update_time = datetime.fromtimestamp(os.path.getmtime(top_packages_path))
+            update_time = datetime.fromtimestamp(
+                os.path.getmtime(top_packages_path))
 
             if datetime.now() - update_time <= timedelta(days=30):
-                log.debug(f"Using cached Maven packages from {top_packages_path}")
+                log.debug(
+                    f"Using cached Maven packages from {top_packages_path}")
                 with open(top_packages_path, "r") as top_packages_file:
                     top_packages_information = json.load(top_packages_file)
 
-                # If cached file is empty, treat it as no cache and fetch dynamically
+                # If cached file is empty, treat it as no cache and fetch
+                # dynamically
                 if not top_packages_information:
-                    log.info("Cached file is empty, triggering dynamic generation...")
+                    log.info(
+                        "Cached file is empty, triggering dynamic generation")
                     top_packages_information = None
 
-        # If no recent cache or empty cache, try to fetch dynamically and update the file
+        # If no recent cache or empty cache, try to fetch dynamically and
+        # update the file
         if top_packages_information is None:
-            log.info("Fetching Maven packages dynamically using Python scraper...")
+            log.info(
+                "Fetching Maven packages dynamically using Python scraper...")
 
             try:
                 dynamic_packages = self._fetch_maven_packages_with_python()
@@ -66,14 +75,19 @@ class MavenTyposquatDetector(TyposquatDetector):
                     # Update the resources file directly - same as PyPI/NPM
                     top_packages_information = sorted(list(dynamic_packages))
                     with open(top_packages_path, "w") as f:
-                        json.dump(top_packages_information, f, ensure_ascii=False, indent=2)
-                    log.info(f"Updated {top_packages_path} with {len(top_packages_information)} packages")
+                        json.dump(top_packages_information, f,
+                                  ensure_ascii=False, indent=2)
+                    log.info(
+                        f"Updated {top_packages_path} with "
+                        f"{len(top_packages_information)} packages")
                 else:
                     # If scraping fails, read existing file
-                    log.warning("Python scraper failed, using existing cached data")
+                    log.warning(
+                        "Python scraper failed, using existing cached data")
                     if os.path.exists(top_packages_path):
                         with open(top_packages_path, "r") as top_packages_file:
-                            top_packages_information = json.load(top_packages_file)
+                            top_packages_information = json.load(
+                                top_packages_file)
 
             except Exception as e:
                 log.warning(f"Dynamic fetching failed: {e}")
@@ -84,15 +98,17 @@ class MavenTyposquatDetector(TyposquatDetector):
 
         # Final fallback if everything fails
         if top_packages_information is None:
-            log.warning("All package sources failed, using minimal essential packages")
-            top_packages_information = list(self._get_essential_maven_packages())
+            log.warning(
+                "All package sources failed, using minimal essential packages")
+            top_packages_information = list(
+                self._get_essential_maven_packages())
 
         return set(top_packages_information)
 
     def _scrape_mvn_popular_page(self, page: int) -> List[str]:
         """
-        Scrape popular Maven packages from mvnrepository.com for a specific page.
-        Python equivalent of the Go getMvnPopularPage function.
+        Scrape popular Maven packages from mvnrepository.com for a specific
+        page. Python equivalent of the Go getMvnPopularPage function.
 
         Args:
             page (int): Page number to scrape
@@ -103,32 +119,33 @@ class MavenTyposquatDetector(TyposquatDetector):
         url = f"https://mvnrepository.com/popular?p={page}"
 
         headers = {
-            'User-Agent': ('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-                           '(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+            'User-Agent': (
+                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
         }
 
         try:
             response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
 
-            soup = BeautifulSoup(response.content, 'html.parser')
+            # Use regex to extract artifact links instead of BeautifulSoup
+            html_content = response.text
             packages = set()
 
-            # Look for "Top Projects" section
-            found_top_projects = False
-            for h1 in soup.find_all('h1'):
-                if h1.get_text().strip() == "Top Projects":
-                    found_top_projects = True
-                    break
+            # Check if "Top Projects" section exists in the page
+            if "Top Projects" not in html_content:
+                log.debug(f"No 'Top Projects' section found on page {page}")
+                return []
 
-            if found_top_projects:
-                # Find all artifact links in the format /artifact/groupId/artifactId
-                for link in soup.find_all('a', href=True):
-                    href = link['href']
-                    if href.startswith('/artifact/'):
-                        parts = href.split('/')
-                        if len(parts) == 4:  # /artifact/groupId/artifactId
-                            packages.add(f"{parts[2]}:{parts[3]}")
+            # Extract all /artifact/groupId/artifactId patterns using regex
+            # Pattern matches: href="/artifact/groupId/artifactId"
+            artifact_pattern = r'href="\/artifact\/([^\/\s"]+)\/([^\/\s"]+)"'
+            matches = re.findall(artifact_pattern, html_content)
+
+            for group_id, artifact_id in matches:
+                # Skip empty matches and validate format
+                if group_id and artifact_id and '.' in group_id:
+                    packages.add(f"{group_id}:{artifact_id}")
 
             return list(packages)
 
@@ -136,7 +153,8 @@ class MavenTyposquatDetector(TyposquatDetector):
             log.warning(f"Failed to scrape mvnrepository.com page {page}: {e}")
             return []
 
-    def _get_deps_dev_default_version(self, package_name: str) -> Optional[str]:
+    def _get_deps_dev_default_version(self, package_name: str) -> (
+            Optional[str]):
         """
         Get default version from deps.dev API.
         Python equivalent of the Go getDepsDevDefaultVersion function.
@@ -147,7 +165,8 @@ class MavenTyposquatDetector(TyposquatDetector):
         Returns:
             Optional[str]: Default version if found, None otherwise
         """
-        url = f"https://api.deps.dev/v3alpha/systems/maven/packages/{package_name}"
+        url = (f"https://api.deps.dev/v3alpha/systems/maven/packages/"
+               f"{package_name}")
 
         try:
             response = requests.get(url, timeout=10)
@@ -164,7 +183,8 @@ class MavenTyposquatDetector(TyposquatDetector):
 
         return None
 
-    def _get_deps_dev_dependencies(self, package_name: str, version: str) -> List[str]:
+    def _get_deps_dev_dependencies(self, package_name: str, version: str) -> (
+            List[str]):
         """
         Get dependencies from deps.dev API.
         Python equivalent of the Go getDepsDevDependencies function.
@@ -176,7 +196,8 @@ class MavenTyposquatDetector(TyposquatDetector):
         Returns:
             List[str]: List of dependency package names
         """
-        url = (f"https://api.deps.dev/v3alpha/systems/maven/packages/{package_name}/"f"versions/{version}:dependencies")
+        url = (f"https://api.deps.dev/v3alpha/systems/maven/packages/"
+               f"{package_name}/versions/{version}:dependencies")
 
         try:
             response = requests.get(url, timeout=10)
@@ -196,7 +217,9 @@ class MavenTyposquatDetector(TyposquatDetector):
             return dependencies
 
         except Exception as e:
-            log.debug(f"Failed to get dependencies for {package_name}@{version}: {e}")
+            log.debug(
+                f"Failed to get dependencies for {package_name}@{version}: "
+                f"{e}")
 
         return []
 
@@ -212,20 +235,23 @@ class MavenTyposquatDetector(TyposquatDetector):
 
         log.info("Scraping Maven packages from mvnrepository.com...")
 
-        # Strategy 1: Scrape mvnrepository.com popular pages (15 pages for good coverage)
+        # Strategy 1: Scrape mvnrepository.com popular pages (15 pages for
+        # good coverage)
         try:
             for page in range(1, 16):  # Pages 1-15
                 packages = self._scrape_mvn_popular_page(page)
                 if packages:
                     all_packages.update(packages)
-                    log.debug(f"Scraped {len(packages)} packages from page {page}")
+                    log.debug(
+                        f"Scraped {len(packages)} packages from page {page}")
                 else:
                     # If we get no packages, we might have hit the end
                     break
 
                 time.sleep(0.5)
 
-            log.info(f"Scraped {len(all_packages)} packages from mvnrepository.com")
+            log.info(
+                f"Scraped {len(all_packages)} packages from mvnrepository.com")
 
         except Exception as e:
             log.warning(f"Failed to scrape mvnrepository.com: {e}")
@@ -233,20 +259,24 @@ class MavenTyposquatDetector(TyposquatDetector):
         # Strategy 2: Expand with dependencies using deps.dev API
         if all_packages:
             try:
-                log.info("Expanding package list with dependencies from deps.dev...")
-                base_packages = list(all_packages)[:50]  # Limit to avoid too many API calls
+                log.info(
+                    "Expanding package list with dependencies from deps.dev")
+                base_packages = list(all_packages)[:50]  # Limit to avoid too
+                # many API calls
                 dependency_packages = set()
 
                 for package in base_packages:
                     version = self._get_deps_dev_default_version(package)
                     if version:
-                        deps = self._get_deps_dev_dependencies(package, version)
+                        deps = self._get_deps_dev_dependencies(
+                            package, version)
                         dependency_packages.update(deps)
 
                     time.sleep(0.1)
 
                 all_packages.update(dependency_packages)
-                log.info(f"Added {len(dependency_packages)} dependency packages")
+                log.info(
+                    f"Added {len(dependency_packages)} dependency packages")
 
             except Exception as e:
                 log.warning(f"Failed to expand with dependencies: {e}")
@@ -255,7 +285,8 @@ class MavenTyposquatDetector(TyposquatDetector):
         essential_packages = self._get_essential_maven_packages()
         all_packages.update(essential_packages)
 
-        log.info(f"Final package count: {len(all_packages)} (including {len(essential_packages)} essential)")
+        log.info(f"Final package count: {len(all_packages)} (including "
+                 f"{len(essential_packages)} essential)")
         return all_packages
 
     def _get_essential_maven_packages(self) -> Set[str]:
@@ -322,12 +353,13 @@ class MavenTyposquatDetector(TyposquatDetector):
         version: Optional[str] = None,
     ) -> tuple[bool, Optional[str]]:
         """
-        Uses a Maven package's information to determine if the
-        package is attempting a typosquatting attack
+        Uses a Maven package's information to determine if the package is
+        attempting a typosquatting attack
 
         Args:
-            package_info (dict): dictionary containing Maven package information
-                with 'info' key containing 'groupid' and 'artifactid'
+            package_info (dict): dictionary containing Maven package
+                information with 'info' key containing 'groupid' and
+                'artifactid'
             name (str): The name of the package in format "groupId:artifactId"
 
         Returns:
@@ -335,14 +367,16 @@ class MavenTyposquatDetector(TyposquatDetector):
                along with a message indicating the similar package name.
                False if not typosquatted and None
         """
-        # Construct the full package name from package_info if name is not provided
+        # Construct the full package name from package_info if name is not
+        # provided
         if name is None:
             group_id = package_info.get("info", {}).get("groupid", "")
             artifact_id = package_info.get("info", {}).get("artifactid", "")
             if group_id and artifact_id:
                 name = f"{group_id}:{artifact_id}"
             else:
-                return False, "Could not determine package name from package info"
+                return False, (
+                    "Could not determine package name from package info")
 
         log.debug(f"Running typosquatting heuristic on Maven package {name}")
         similar_package_names = self.get_typosquatted_package(name)
@@ -363,7 +397,8 @@ class MavenTyposquatDetector(TyposquatDetector):
             - Artifact ID term swaps (core/api, spring/apache, etc.)
 
         Args:
-            package_name (str): name of the package in format "groupId:artifactId"
+            package_name (str): name of the package in format
+                "groupId:artifactId"
 
         Returns:
             list: list of confused terms
@@ -379,14 +414,19 @@ class MavenTyposquatDetector(TyposquatDetector):
         group_id_patterns = {
             # Apache ecosystem confusions
             "org.apache": ["org.springframework", "com.apache"],
-            "org.apache.commons": ["org.springframework", "com.google.common", "org.apache"],
+            "org.apache.commons": ["org.springframework", "com.google.common",
+                                   "org.apache"],
             "org.apache.logging": ["org.slf4j", "ch.qos.logback"],
-            "org.apache.httpcomponents": ["com.squareup.okhttp3", "org.springframework.web"],
+            "org.apache.httpcomponents": ["com.squareup.okhttp3",
+                                          "org.springframework.web"],
 
             # Spring ecosystem confusions
-            "org.springframework": ["org.apache", "org.apache.commons", "com.springframework"],
-            "org.springframework.boot": ["org.springframework", "org.apache.commons"],
-            "org.springframework.data": ["org.hibernate", "org.apache.commons"],
+            "org.springframework": ["org.apache", "org.apache.commons",
+                                    "com.springframework"],
+            "org.springframework.boot": ["org.springframework",
+                                         "org.apache.commons"],
+            "org.springframework.data": ["org.hibernate",
+                                         "org.apache.commons"],
 
             # Google ecosystem confusions
             "com.google": ["com.apache", "org.google", "com.google.guava"],
@@ -405,12 +445,15 @@ class MavenTyposquatDetector(TyposquatDetector):
             "org.apache.logging.log4j": ["org.slf4j", "ch.qos.logback"],
 
             # Hibernate/JPA confusions
-            "org.hibernate": ["com.hibernate", "org.springframework.data", "javax.persistence"],
+            "org.hibernate": ["com.hibernate", "org.springframework.data",
+                              "javax.persistence"],
             "javax.persistence": ["org.hibernate", "org.springframework.data"],
 
             # Jackson confusions
-            "com.fasterxml.jackson": ["com.fasterxml.jackson.core", "org.codehaus.jackson"],
-            "com.fasterxml.jackson.core": ["com.fasterxml.jackson", "org.codehaus.jackson"],
+            "com.fasterxml.jackson": ["com.fasterxml.jackson.core",
+                                      "org.codehaus.jackson"],
+            "com.fasterxml.jackson.core": ["com.fasterxml.jackson",
+                                           "org.codehaus.jackson"],
             "com.fasterxml": ["com.fasterxml.jackson"],
 
             # Database driver confusions
@@ -428,10 +471,13 @@ class MavenTyposquatDetector(TyposquatDetector):
                 # Reverse mapping
                 confused_forms.append(f"{pattern_group}:{artifact_id}")
             elif group_id.startswith(pattern_group + "."):
-                # Sub-group pattern matching (e.g., org.apache.* → org.springframework.*)
+                # Sub-group pattern matching (e.g., org.apache.* →
+                # org.springframework.*)
                 for confused_group in confused_groups:
-                    if not confused_group.startswith(group_id[:group_id.rfind(".")]):
-                        confused_forms.append(f"{confused_group}:{artifact_id}")
+                    if not confused_group.startswith(
+                            group_id[:group_id.rfind(".")]):
+                        confused_forms.append(
+                            f"{confused_group}:{artifact_id}")
 
         # Handle hierarchical group ID simplifications/expansions
         group_parts = group_id.split(".")
@@ -474,14 +520,18 @@ class MavenTyposquatDetector(TyposquatDetector):
                     for confused_term in confused_terms:
                         new_term = term.replace(original_term, confused_term)
                         if new_term != term:  # Only add if it actually changed
-                            replaced_artifact = artifact_terms[:i] + [new_term] + artifact_terms[i + 1:]
-                            confused_forms.append(f"{group_id}:{'-'.join(replaced_artifact)}")
+                            replaced_artifact = (
+                                artifact_terms[:i] + [new_term]
+                                + artifact_terms[i + 1:])
+                            confused_forms.append(
+                                f"{group_id}:{'-'.join(replaced_artifact)}")
 
         # Remove duplicates while preserving order
         seen = set()
         unique_confused_forms = []
         for form in confused_forms:
-            if form not in seen and form != package_name:  # Don't include the original package
+            if (form not in seen
+                    and form != package_name):  # Don't include original package
                 seen.add(form)
                 unique_confused_forms.append(form)
 
