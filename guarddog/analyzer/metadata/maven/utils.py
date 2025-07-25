@@ -23,4 +23,3 @@ def get_email_addresses(package_info: dict) -> set[str]:
             emails.add(contrib["email"])
             
     return emails - {None, ""}
- 
