@@ -24,6 +24,7 @@ class MavenTyposquatDetector(TyposquatDetector):
         """
         Gets Maven packages using the same 30-day caching pattern as PyPI
         and NPM. Automatically calls Maven scraper when cache is stale.
+        Falls back to using stale cache if scraper fails.
 
         Returns:
             set: Set of popular Maven packages in "groupId:artifactId" format
@@ -38,54 +39,57 @@ class MavenTyposquatDetector(TyposquatDetector):
 
         top_packages_path = os.path.join(resources_dir, top_packages_filename)
 
-        # Check if file exists and is recent (< 30 days old)
-        should_refresh = True
-        if os.path.exists(top_packages_path):
-            update_time = datetime.fromtimestamp(
-                os.path.getmtime(top_packages_path))
+        # File should always exist - raise error if not found
+        if not os.path.exists(top_packages_path):
+            raise FileNotFoundError(f"Maven cache file not found at {top_packages_path}. Please run maven_scraper.py first.")
 
-            if datetime.now() - update_time <= timedelta(days=30):
-                log.debug(
-                    f"Using cached Maven packages from {top_packages_path}")
-                try:
-                    with open(top_packages_path, "r") as top_packages_file:
-                        data = json.load(top_packages_file)
-                    
-                    packages = self._extract_packages_from_data(data)
-                    if packages:
-                        should_refresh = False
-                        return packages
-                    else:
-                        log.warning("Cached file is empty or invalid")
-                except Exception as e:
-                    log.warning(f"Failed to read cached file: {e}")
+        update_time = datetime.fromtimestamp(os.path.getmtime(top_packages_path))
+        is_cache_fresh = datetime.now() - update_time <= timedelta(days=30)
 
-        # If no recent cache or file is invalid, run Maven scraper
-        if should_refresh:
-            log.info("Cache missing or stale. Running Maven scraper...")
-            success = self._run_maven_scraper(top_packages_path)
-            
-            if success:
-                # Read the newly generated file
-                try:
-                    with open(top_packages_path, "r") as top_packages_file:
-                        data = json.load(top_packages_file)
-                    
-                    packages = self._extract_packages_from_data(data)
-                    if packages:
-                        return packages
-                    else:
-                        log.warning("Newly generated file is empty or invalid")
-                except Exception as e:
-                    log.warning(f"Failed to read newly generated file: {e}")
+        # Read the existing cache
+        try:
+            with open(top_packages_path, "r") as top_packages_file:
+                cached_data = json.load(top_packages_file)
+            log.debug(f"Successfully read cache file: {len(cached_data) if isinstance(cached_data, list) else 'structured data'}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to read Maven cache file: {e}")
+
+        # If cache is fresh, use it immediately
+        if is_cache_fresh:
+            log.debug(f"Using fresh cached Maven packages from {top_packages_path}")
+            packages = self._extract_packages_from_data(cached_data)
+            if packages:
+                return packages
             else:
-                log.warning("Maven scraper failed")
+                log.warning("Fresh cache file is empty or invalid, attempting refresh")
 
-        # Final fallback if everything fails
-        log.warning(
-            "All package sources failed, using essential packages as fallback"
-        )
-        return self._get_essential_maven_packages()
+        # Cache is stale or empty, try to refresh it
+        log.info(f"Cache is {(datetime.now() - update_time).days} days old. Attempting to refresh...")
+        success = self._run_maven_scraper(top_packages_path)
+        
+        if success:
+            # Read the newly generated file
+            try:
+                with open(top_packages_path, "r") as top_packages_file:
+                    fresh_data = json.load(top_packages_file)
+                
+                packages = self._extract_packages_from_data(fresh_data)
+                if packages:
+                    log.info("✅ Successfully refreshed Maven package cache")
+                    return packages
+                else:
+                    log.warning("Newly generated file is empty or invalid")
+            except Exception as e:
+                log.warning(f"Failed to read newly generated file: {e}")
+
+        # Scraper failed - use the stale cache as fallback
+        log.warning(f"Maven scraper failed. Using stale cache ({(datetime.now() - update_time).days} days old)")
+        packages = self._extract_packages_from_data(cached_data)
+        if packages:
+            return packages
+        
+        # If we reach here, both scraper and cache failed
+        raise RuntimeError("Maven cache is unusable and scraper failed. Cannot load package data.")
 
     def _extract_packages_from_data(self, data) -> set:
         """
@@ -149,10 +153,10 @@ class MavenTyposquatDetector(TyposquatDetector):
             success = scraper.scrape_mvn_and_output_json(output_file)
             
             if success:
-                log.info("✅ Maven scraper completed successfully!")
+                log.info("Maven scraper completed successfully!")
                 return True
             else:
-                log.error("❌ Maven scraper failed")
+                log.error("Maven scraper failed")
                 return False
                 
         except ImportError as e:
@@ -161,62 +165,6 @@ class MavenTyposquatDetector(TyposquatDetector):
         except Exception as e:
             log.error(f"Error running Maven scraper: {e}")
             return False
-
-    def _get_essential_maven_packages(self) -> set:
-        """
-        Returns a curated set of essential Maven packages as fallback.
-        These are the most critical packages that should always be included.
-
-        Returns:
-            set: Essential Maven packages
-        """
-        return {
-            # Spring Boot ecosystem (most popular)
-            "org.springframework.boot:spring-boot-starter-parent",
-            "org.springframework.boot:spring-boot-starter-web",
-            "org.springframework.boot:spring-boot-starter-data-jpa",
-            "org.springframework.boot:spring-boot-starter-test",
-            "org.springframework.boot:spring-boot-starter-security",
-            "org.springframework.boot:spring-boot-starter-actuator",
-
-            # Core Spring
-            "org.springframework:spring-core",
-            "org.springframework:spring-context",
-            "org.springframework:spring-web",
-            "org.springframework:spring-webmvc",
-
-            # Testing
-            "org.junit.jupiter:junit-jupiter",
-            "org.junit.jupiter:junit-jupiter-api",
-            "org.junit.jupiter:junit-jupiter-engine",
-            "org.mockito:mockito-core",
-            "org.testng:testng",
-
-            # Logging
-            "org.slf4j:slf4j-api",
-            "ch.qos.logback:logback-classic",
-            "org.apache.logging.log4j:log4j-core",
-
-            # JSON processing
-            "com.fasterxml.jackson.core:jackson-core",
-            "com.fasterxml.jackson.core:jackson-databind",
-            "com.google.code.gson:gson",
-
-            # Utilities
-            "com.google.guava:guava",
-            "org.apache.commons:commons-lang3",
-            "org.projectlombok:lombok",
-
-            # Database
-            "mysql:mysql-connector-java",
-            "org.postgresql:postgresql",
-            "com.h2database:h2",
-            "org.hibernate.orm:hibernate-core",
-
-            # HTTP clients
-            "org.apache.httpcomponents:httpclient",
-            "com.squareup.okhttp3:okhttp",
-        }
 
     def detect(
         self,
@@ -240,23 +188,19 @@ class MavenTyposquatDetector(TyposquatDetector):
                along with a message indicating the similar package name.
                False if not typosquatted and None
         """
-        # Construct the full package name from package_info if name is not
-        # provided
+        # Construct the full package name from package_info if name is not provided
         if name is None:
             group_id = package_info.get("info", {}).get("groupid", "")
             artifact_id = package_info.get("info", {}).get("artifactid", "")
             if group_id and artifact_id:
                 name = f"{group_id}:{artifact_id}"
             else:
-                return False, (
-                    "Could not determine package name from package info")
+                return False, "Could not determine package name from package info"
 
         log.debug(f"Running typosquatting heuristic on Maven package {name}")
         similar_package_names = self.get_typosquatted_package(name)
         if len(similar_package_names) > 0:
-            return True, TyposquatDetector.MESSAGE_TEMPLATE % ", ".join(
-                similar_package_names
-            )
+            return True, TyposquatDetector.MESSAGE_TEMPLATE % ", ".join(similar_package_names)
         return False, None
 
     def _get_confused_forms(self, package_name) -> list:
@@ -270,8 +214,7 @@ class MavenTyposquatDetector(TyposquatDetector):
             - Artifact ID term swaps (core/api, spring/apache, etc.)
 
         Args:
-            package_name (str): name of the package in format
-                "groupId:artifactId"
+            package_name (str): name of the package in format "groupId:artifactId"
 
         Returns:
             list: list of confused terms
@@ -287,19 +230,14 @@ class MavenTyposquatDetector(TyposquatDetector):
         group_id_patterns = {
             # Apache ecosystem confusions
             "org.apache": ["org.springframework", "com.apache"],
-            "org.apache.commons": ["org.springframework", "com.google.common",
-                                   "org.apache"],
+            "org.apache.commons": ["org.springframework", "com.google.common", "org.apache"],
             "org.apache.logging": ["org.slf4j", "ch.qos.logback"],
-            "org.apache.httpcomponents": ["com.squareup.okhttp3",
-                                          "org.springframework.web"],
+            "org.apache.httpcomponents": ["com.squareup.okhttp3", "org.springframework.web"],
 
             # Spring ecosystem confusions
-            "org.springframework": ["org.apache", "org.apache.commons",
-                                    "com.springframework"],
-            "org.springframework.boot": ["org.springframework",
-                                         "org.apache.commons"],
-            "org.springframework.data": ["org.hibernate",
-                                         "org.apache.commons"],
+            "org.springframework": ["org.apache", "org.apache.commons", "com.springframework"],
+            "org.springframework.boot": ["org.springframework", "org.apache.commons"],
+            "org.springframework.data": ["org.hibernate", "org.apache.commons"],
 
             # Google ecosystem confusions
             "com.google": ["com.apache", "org.google", "com.google.guava"],
@@ -318,15 +256,12 @@ class MavenTyposquatDetector(TyposquatDetector):
             "org.apache.logging.log4j": ["org.slf4j", "ch.qos.logback"],
 
             # Hibernate/JPA confusions
-            "org.hibernate": ["com.hibernate", "org.springframework.data",
-                              "javax.persistence"],
+            "org.hibernate": ["com.hibernate", "org.springframework.data", "javax.persistence"],
             "javax.persistence": ["org.hibernate", "org.springframework.data"],
 
             # Jackson confusions
-            "com.fasterxml.jackson": ["com.fasterxml.jackson.core",
-                                      "org.codehaus.jackson"],
-            "com.fasterxml.jackson.core": ["com.fasterxml.jackson",
-                                           "org.codehaus.jackson"],
+            "com.fasterxml.jackson": ["com.fasterxml.jackson.core", "org.codehaus.jackson"],
+            "com.fasterxml.jackson.core": ["com.fasterxml.jackson", "org.codehaus.jackson"],
             "com.fasterxml": ["com.fasterxml.jackson"],
 
             # Database driver confusions
@@ -344,13 +279,10 @@ class MavenTyposquatDetector(TyposquatDetector):
                 # Reverse mapping
                 confused_forms.append(f"{pattern_group}:{artifact_id}")
             elif group_id.startswith(pattern_group + "."):
-                # Sub-group pattern matching (e.g., org.apache.* →
-                # org.springframework.*)
+                # Sub-group pattern matching (e.g., org.apache.* → org.springframework.*)
                 for confused_group in confused_groups:
-                    if not confused_group.startswith(
-                            group_id[:group_id.rfind(".")]):
-                        confused_forms.append(
-                            f"{confused_group}:{artifact_id}")
+                    if not confused_group.startswith(group_id[:group_id.rfind(".")]):
+                        confused_forms.append(f"{confused_group}:{artifact_id}")
 
         # Handle hierarchical group ID simplifications/expansions
         group_parts = group_id.split(".")
@@ -393,18 +325,14 @@ class MavenTyposquatDetector(TyposquatDetector):
                     for confused_term in confused_terms:
                         new_term = term.replace(original_term, confused_term)
                         if new_term != term:  # Only add if it actually changed
-                            replaced_artifact = (
-                                artifact_terms[:i] + [new_term]
-                                + artifact_terms[i + 1:])
-                            confused_forms.append(
-                                f"{group_id}:{'-'.join(replaced_artifact)}")
+                            replaced_artifact = (artifact_terms[:i] + [new_term] + artifact_terms[i + 1:])
+                            confused_forms.append(f"{group_id}:{'-'.join(replaced_artifact)}")
 
         # Remove duplicates while preserving order
         seen = set()
         unique_confused_forms = []
         for form in confused_forms:
-            if (form not in seen
-                    and form != package_name):  # Don't include original package
+            if form not in seen and form != package_name:  # Don't include original package
                 seen.add(form)
                 unique_confused_forms.append(form)
 
