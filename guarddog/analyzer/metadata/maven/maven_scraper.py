@@ -331,7 +331,7 @@ class MavenScraper:
 
             logger.info(f"Results written to {output_file}")
             summary = (f"Summary: {len(all_packages)} popular packages, "
-                     f"{len(dependencies_list)} dependencies, {len(github_repos)} GitHub repos")
+                      f"{len(dependencies_list)} dependencies, {len(github_repos)} GitHub repos")
             logger.info(summary)
             return True
 
