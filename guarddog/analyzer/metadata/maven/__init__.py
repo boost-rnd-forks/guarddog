@@ -11,4 +11,4 @@ classes = [
 for detectorClass in classes:
     detectorInstance = detectorClass()  # type: ignore
     MAVEN_METADATA_RULES[detectorInstance.get_name()] = detectorInstance
-    
+  

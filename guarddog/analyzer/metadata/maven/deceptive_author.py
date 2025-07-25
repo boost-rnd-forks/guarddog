@@ -11,4 +11,4 @@ from .utils import get_email_addresses
 class MavenDeceptiveAuthor(DeceptiveAuthorDetector):
     def get_email_addresses(self, package_info: dict):
         return get_email_addresses(package_info)
-    
+       

@@ -1,15 +1,13 @@
 def get_email_addresses(package_info: dict) -> set[str]:
     """
     Extract email addresses from Maven package metadata.
-    
     Args:
-        package_info (dict): Maven package metadata
-        
+        package_info (dict): Maven package metadata 
     Returns:
         set[str]: Set of email addresses found in the metadata
     """
     emails = set()
-    
+
     # Extract from developers
     developers = package_info.get("developers", [])
     for dev in developers:
