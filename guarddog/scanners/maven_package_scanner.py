@@ -61,15 +61,16 @@ class MavenPackageScanner(PackageScanner):
         )
 
         # decompress jar
-        decompressed_path: typing.Optional[str] = None
+        decompressed_path: str | None = None
         if jar_path.endswith(".jar"):
             log.debug(f"Extracting {jar_path} into {directory}...")
             decompressed_path = os.path.join(directory, "decompressed")
             self.extract_jar(jar_path, decompressed_path)
         else:
-            log.debug(f"Could not extract {jar_path}")
+            log.error(f"Could not extract {jar_path}")
         if (
-            os.path.exists(decompressed_path)
+            decompressed_path
+            and os.path.exists(decompressed_path)
             and os.path.isdir(decompressed_path)
             and len(os.listdir(decompressed_path)) > 0
         ):
@@ -82,9 +83,9 @@ class MavenPackageScanner(PackageScanner):
         self.decompile_jar(jar_path, decompiled_path)
 
         # diff between retrieved and decompressed pom
-        jar_pom: tuple[bool, str] | None = self.diff_pom(
-            decompressed_path, group_id, artifact_id, pom_path
-        )
+        jar_pom: tuple[bool, str] | None = None
+        if decompressed_path:
+            jar_pom = self.diff_pom(decompressed_path, group_id, artifact_id, pom_path)
         if jar_pom:
             same, pom_jar_path = jar_pom
             if same:
@@ -248,9 +249,9 @@ class MavenPackageScanner(PackageScanner):
 
     def get_package_info(
         self,
-        pom_path: str,
-        decompressed_path: str,
-        decompiled_path: str,
+        pom_path: str | None,
+        decompressed_path: str | None,
+        decompiled_path: str | None,
         group_id: str,
         artifact_id: str,
         version: str,
@@ -269,29 +270,30 @@ class MavenPackageScanner(PackageScanner):
         """
         emails = []
         log.debug(f"Parsing pom {pom_path}")
-        if not os.path.isfile(pom_path):
-            log.warning(f"WARNING: {pom_path} does not exist.")
-        try:
-            tree = ET.parse(pom_path)
-            root = tree.getroot()
+        if not pom_path or not os.path.isfile(pom_path):
+            log.warning(f"WARNING: pom {pom_path} does not exist.")
+        else:
+            try:
+                tree = ET.parse(pom_path)
+                root = tree.getroot()
 
-            # Detect namespace if present
-            namespace = ""
-            if "}" in root.tag:
-                namespace = root.tag.split("}")[0].strip("{")
-            ns = {"mvn": namespace} if namespace else {}
+                # Detect namespace if present
+                namespace = ""
+                if "}" in root.tag:
+                    namespace = root.tag.split("}")[0].strip("{")
+                ns = {"mvn": namespace} if namespace else {}
 
-            for dev in root.findall(".//mvn:developer", ns):
-                email = dev.find("mvn:email", ns)
-                if email is not None and email.text:
-                    emails.append(email.text.strip())
-            if not emails:
-                log.debug("No email found in the pom.")
+                for dev in root.findall(".//mvn:developer", ns):
+                    email = dev.find("mvn:email", ns)
+                    if email is not None and email.text:
+                        emails.append(email.text.strip())
+                if not emails:
+                    log.debug("No email found in the pom.")
 
-        except ET.ParseError as e:
-            log.warning(f"Failed to parse POM: {pom_path}, error: {e}")
-        except Exception as e:
-            log.warning(f"Unexpected error parsing POM: {e}")
+            except ET.ParseError as e:
+                log.warning(f"Failed to parse POM: {pom_path}, error: {e}")
+            except Exception as e:
+                log.warning(f"Unexpected error parsing POM: {e}")
 
         return {
             "info": {
