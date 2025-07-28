@@ -288,14 +288,14 @@ class MavenPackageScanner(PackageScanner):
                     emails.append(email.text.strip())
             if not emails:
                 log.debug("No email found in the pom.")
-            
+
             # find description
             # Find <description> element
-            description_elem = root.find('mvn:description', ns)
+            description_elem = root.find("mvn:description", ns)
             if description_elem is not None and description_elem.text:
                 description = description_elem.text.strip()
                 log.debug(f"<description> in pom: {description}")
-            else: 
+            else:
                 description = ""
                 log.debug("No description found in pom")
 
