@@ -302,7 +302,9 @@ class MavenPackageScanner(PackageScanner):
         except Exception as e:
             log.warning(f"Unexpected error parsing POM: {e}")
 
-        latest_release, latest_release_date = self.get_latest_maven_version(group_id, artifact_id)
+        latest_release, latest_release_date = self.get_latest_maven_version(
+            group_id, artifact_id
+        )
 
         return {
             "info": {
@@ -320,7 +322,7 @@ class MavenPackageScanner(PackageScanner):
             },
         }
 
-    def get_latest_maven_version(self, group_id: str, artifact_id: str) :
+    def get_latest_maven_version(self, group_id: str, artifact_id: str):
         """
         Fetches the latest release of the project and the release date
         from https://search.maven.org/solrsearch/select
@@ -332,7 +334,7 @@ class MavenPackageScanner(PackageScanner):
         params = {
             "q": f'g:"{group_id}" AND a:"{artifact_id}"',
             "rows": "1",
-            "wt": "json"
+            "wt": "json",
         }
 
         response = requests.get(url, params=params)
