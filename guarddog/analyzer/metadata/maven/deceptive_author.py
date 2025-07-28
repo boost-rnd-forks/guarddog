@@ -1,6 +1,6 @@
 """ Deceptive Author Detector
 
-Detects when an author of is using a disposable email
+Detects when an author is using a disposable email
 """
 
 from guarddog.analyzer.metadata.deceptive_author import DeceptiveAuthorDetector
