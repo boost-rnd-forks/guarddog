@@ -61,7 +61,7 @@ class MavenPackageScanner(PackageScanner):
         )
 
         # decompress jar
-        decompressed_path: str = ""
+        decompressed_path: typing.Optional[str] = None
         if jar_path.endswith(".jar"):
             log.debug(f"Extracting {jar_path} into {directory}...")
             decompressed_path = os.path.join(directory, "decompressed")
