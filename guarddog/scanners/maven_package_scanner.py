@@ -45,14 +45,22 @@ class MavenPackageScanner(PackageScanner):
                     - decompiled/decompiled_java_files
             * path to the decompiled sourcecode
         """
-        if version is None:
-            raise ValueError("Version must be specified for Maven packages")
         try:
             group_id, artifact_id = package_name.split(":")
         except ValueError:
             raise Exception(
                 f"Invalid package format: '{package_name}'. Expected 'groupId:artifactId'"
             )
+        if version is None:
+            latest_version = self.get_latest_maven_version(group_id, artifact_id)
+            if latest_version is None:
+                raise ValueError(
+                    "Version must be specified for Maven packages. Could not find latest version"
+                )
+            else:
+                version = latest_version
+                log.debug("No version specified")
+                log.debug(f"-->Using version {version} of {package_name}")
         if not directory:
             directory = artifact_id
 
@@ -293,12 +301,15 @@ class MavenPackageScanner(PackageScanner):
         except Exception as e:
             log.warning(f"Unexpected error parsing POM: {e}")
 
+        latest_release: str|None = self.get_latest_maven_version(group_id, artifact_id)
+
         return {
             "info": {
                 "groupid": group_id,
                 "artifactid": artifact_id,
                 "version": version,
                 "email": emails,
+                "latest_release": latest_release,
             },
             "path": {
                 "pom_path": pom_path,
@@ -306,3 +317,19 @@ class MavenPackageScanner(PackageScanner):
                 "decompiled_path": decompiled_path,
             },
         }
+
+    def get_latest_maven_version(self, group_id: str, artifact_id: str) -> str | None:
+        """
+        Fetches the latest release of the project
+        from https://search.maven.org/solrsearch/select
+        """
+        url = "https://search.maven.org/solrsearch/select"
+        params = {"q": f'g:"{group_id}" AND a:"{artifact_id}"', "rows": "1", "wt": "json"}
+
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            docs = data.get("response", {}).get("docs", [])
+            if docs:
+                return docs[0].get("latestVersion")
+        return None
