@@ -7,6 +7,7 @@ import requests
 import filecmp
 import zipfile
 import shutil
+from urllib.parse import urlparse
 
 from guarddog.analyzer.analyzer import Analyzer
 from guarddog.ecosystems import ECOSYSTEM
@@ -15,6 +16,7 @@ from guarddog.scanners.scanner import PackageScanner
 log = logging.getLogger("guarddog")
 
 MAVEN_CENTRAL_BASE_URL = "https://repo1.maven.org/maven2"
+TRUSTED_DOMAINS = {"repo1.maven.org", "search.maven.org"}
 CFR_JAR_PATH = os.environ.get(
     "CFR_JAR_PATH",
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../cfr-0.152.jar")),
@@ -132,10 +134,18 @@ class MavenPackageScanner(PackageScanner):
         jar_path = os.path.join(directory, f"{artifact_id}-{version}.jar")
         pom_path = os.path.join(directory, "pom.xml")
 
-        # We could also use the dowload_decompressed method from scanner.py
+        # We could also use the download_decompressed method from scanner.py
         try:
             for url, path in [(jar_url, jar_path), (pom_url, pom_path)]:
+                # verify=True ensures SSL certificate validation
                 r = requests.get(url, stream=True, timeout=10, verify=True)
+                final_url = r.url
+                parsed = urlparse(final_url)
+                if parsed.hostname not in TRUSTED_DOMAINS:
+                    raise ValueError(
+                        f"Unsafe redirect detected: {final_url} not in trusted domains"
+                    )
+
                 if r.status_code != 200:
                     raise Exception(
                         f"Failed to download Maven package from {url} (status {r.status_code})"
@@ -161,8 +171,10 @@ class MavenPackageScanner(PackageScanner):
             log.debug("Extracting jar package...")
             output_dir_abs = os.path.abspath(output_dir)
             for file in jar.namelist():
+                # resolve paths and removes ../
                 safe_path = os.path.abspath(os.path.join(output_dir, file))
-                if not safe_path.startswith(output_dir_abs):
+                # ensure safe_path in the output dir
+                if os.path.commonpath([output_dir_abs, safe_path]) != output_dir_abs:
                     log.warning(f"Skipping potentially unsafe file: {file}")
                     continue
                 if file.endswith("/"):  # It's a directory
@@ -214,6 +226,13 @@ class MavenPackageScanner(PackageScanner):
         else:
             return None
 
+    def is_safe_path(self, path: str) -> bool:
+        """Basic path safety check to avoid traversal or injection."""
+        return os.path.isabs(path) or not (".." in path or path.startswith(("/", "\\")))
+
+    def is_jar_file(self, path: str) -> bool:
+        return path.endswith(".jar") and os.path.isfile(path)
+
     def decompile_jar(self, jar_path: str, dest_path: str):
         """
         Decompiles the .jar file using CFR decompiler.
@@ -222,10 +241,12 @@ class MavenPackageScanner(PackageScanner):
             - `dest_path` (str): path of the destination folder
             to store the resulting .class files
         """
-        if not os.path.isfile(jar_path):
-            raise FileNotFoundError(f"JAR file not found: {jar_path}")
+        if not self.is_safe_path(jar_path) or not self.is_jar_file(jar_path):
+            raise ValueError(f"Invalid JAR path: {jar_path}")
         if not os.path.isfile(CFR_JAR_PATH):
             raise FileNotFoundError(f"CFR jar file not found: {CFR_JAR_PATH}")
+        if not self.is_safe_path(dest_path):
+            raise ValueError(f"Invalid destination path: {dest_path}")
 
         os.makedirs(dest_path, exist_ok=True)
 
