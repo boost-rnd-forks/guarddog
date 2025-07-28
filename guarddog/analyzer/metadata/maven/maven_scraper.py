@@ -22,7 +22,30 @@ class MavenScraper:
         })
 
     def url_encode(self, text: str) -> str:
-        """Simple URL encoding for package names"""
+        """
+        Custom URL encoding for package names.
+        
+        This method replaces specific characters in the input string with their
+        percent-encoded equivalents. It is a custom implementation and does not
+        follow standard URL encoding conventions.
+        
+        Characters encoded:
+            ':' -> '%3A'
+            '/' -> '%2F'
+            '@' -> '%40'
+            ' ' -> '%20'
+            '+' -> '%2B'
+            '=' -> '%3D'
+            '&' -> '%26'
+            '?' -> '%3F'
+            '#' -> '%23'
+        
+        Args:
+            text (str): The input string to encode.
+        
+        Returns:
+            str: The encoded string with specific characters replaced.
+        """
         # Replace characters that need encoding in URLs
         replacements = {
             ':': '%3A',
@@ -95,7 +118,10 @@ class MavenScraper:
         try:
             response = self.session.get(url)
             if response.status_code != 200:
-                logger.warning(f"Failed to get default version for {pkg}: {response.status_code}")
+                logger.warning(
+                    f"Failed to get default version for {pkg}: {response.status_code} - "
+                    f"{response.reason} - {response.text[:200]}"
+                )
                 return None
 
             data = response.json()
@@ -120,7 +146,9 @@ class MavenScraper:
         try:
             response = self.session.get(url)
             if response.status_code != 200:
-                logger.warning(f"Failed to get dependencies for {pkg}@{version}: {response.status_code}")
+                response_text = response.text[:500]  # Limit to 500 characters to avoid overly verbose logs
+                logger.warning(f"Failed to get dependencies for {pkg}@{version}: {response.status_code}. "
+                               f"Response: {response_text}")
                 return []
 
             data = response.json()
