@@ -7,6 +7,7 @@ import requests
 import filecmp
 import zipfile
 import shutil
+from datetime import datetime
 
 from guarddog.analyzer.analyzer import Analyzer
 from guarddog.ecosystems import ECOSYSTEM
@@ -52,7 +53,7 @@ class MavenPackageScanner(PackageScanner):
                 f"Invalid package format: '{package_name}'. Expected 'groupId:artifactId'"
             )
         if version is None:
-            latest_version = self.get_latest_maven_version(group_id, artifact_id)
+            latest_version, _ = self.get_latest_maven_version(group_id, artifact_id)
             if latest_version is None:
                 raise ValueError(
                     "Version must be specified for Maven packages. Could not find latest version"
@@ -301,7 +302,7 @@ class MavenPackageScanner(PackageScanner):
         except Exception as e:
             log.warning(f"Unexpected error parsing POM: {e}")
 
-        latest_release: str|None = self.get_latest_maven_version(group_id, artifact_id)
+        latest_release, latest_release_date = self.get_latest_maven_version(group_id, artifact_id)
 
         return {
             "info": {
@@ -310,6 +311,7 @@ class MavenPackageScanner(PackageScanner):
                 "version": version,
                 "email": emails,
                 "latest_release": latest_release,
+                "latest_release_date": latest_release_date,
             },
             "path": {
                 "pom_path": pom_path,
@@ -318,18 +320,30 @@ class MavenPackageScanner(PackageScanner):
             },
         }
 
-    def get_latest_maven_version(self, group_id: str, artifact_id: str) -> str | None:
+    def get_latest_maven_version(self, group_id: str, artifact_id: str) :
         """
-        Fetches the latest release of the project
+        Fetches the latest release of the project and the release date
         from https://search.maven.org/solrsearch/select
+        Returns
+            - latest-version: str
+            - release-date: datetime
         """
         url = "https://search.maven.org/solrsearch/select"
-        params = {"q": f'g:"{group_id}" AND a:"{artifact_id}"', "rows": "1", "wt": "json"}
+        params = {
+            "q": f'g:"{group_id}" AND a:"{artifact_id}"',
+            "rows": "1",
+            "wt": "json"
+        }
 
         response = requests.get(url, params=params)
         if response.status_code == 200:
             data = response.json()
             docs = data.get("response", {}).get("docs", [])
             if docs:
-                return docs[0].get("latestVersion")
-        return None
+                latest_version = docs[0].get("latestVersion")
+                timestamp = docs[0].get("timestamp")
+                if latest_version and timestamp:
+                    release_date = datetime.fromtimestamp(timestamp / 1000)
+                    return latest_version, release_date
+
+        return None, None
