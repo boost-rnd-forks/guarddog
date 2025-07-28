@@ -129,6 +129,9 @@ class MavenDangerousPomXML(Detector):
         The pom.xml is supposed to be in the root directory: {path}/pom.xml
         Stores the resulting effective xml in OUTPUT_FILE
         """
+        if not os.path.isdir(path) or not os.path.abspath(path).startswith(os.getcwd()):
+            raise ValueError(f"Invalid path provided: {path}")
+
         pom_path = os.path.join(path, "pom.xml")
 
         if not os.path.isfile(pom_path):
@@ -198,12 +201,14 @@ class MavenDangerousPomXML(Detector):
         download_urls = [".//mvn:repository/mvn:url", ".//mvn:pluginRepository/mvn:url"]
         for path in download_urls:
             for elem in root.findall(path, NAMESPACE):
-                url = self.get_text(elem)
-                for trusted_repo in TRUSTED_REPOS:
-                    if not url.startswith(trusted_repo):
-                        found = True
-                        bad_urls.append(url)
-                        log.debug(f"Untrusted plugin source {url}.")
+                url = self.get_text(elem).split("//")[1]
+                log.debug(f"analysing url {url}")
+                if not any(
+                    url.startswith(trusted_repo) for trusted_repo in TRUSTED_REPOS
+                ):
+                    found = True
+                    bad_urls.append(url)
+                    log.debug(f"Untrusted plugin source {url}.")
         return found, bad_urls
 
     def get_text(self, elem):
@@ -259,7 +264,7 @@ class MavenDangerousPomXML(Detector):
         """
         tree = ET.parse(pom_path)
         root = tree.getroot()
-        results = {}
+        results: dict = {}
         log.debug("\nScanning for dangerous tags ...\n")
         for plugin in root.findall(".//mvn:plugin", NAMESPACE):
             artifact_id = plugin.find("mvn:artifactId", NAMESPACE)
@@ -285,7 +290,11 @@ class MavenDangerousPomXML(Detector):
                         tags_found.append((f"<{tag}>", tag_txt))
                 # if both found
                 if has_susp_tag and phase:
-                    results[plugin_id] = {"phase": early_phases, "tag": tags_found}
+                    if plugin_id not in results:
+                        results[plugin_id] = []
+                    results[plugin_id].append(
+                        {"phase": early_phases, "tag": tags_found}
+                    )
                     log.debug(
                         f"Suspicious tags combination found in {plugin_id}: {tags_found} in phases {early_phases}"
                     )
