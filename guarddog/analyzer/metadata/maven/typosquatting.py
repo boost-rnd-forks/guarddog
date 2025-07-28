@@ -42,7 +42,8 @@ class MavenTyposquatDetector(TyposquatDetector):
         # File should always exist - raise error if not found
         if not os.path.exists(top_packages_path):
             error_msg = (f"Maven cache file not found at {top_packages_path}. "
-                         "Please run maven_scraper.py first.")
+                         f"To generate the cache file, run: "
+                         f"python -m guarddog.analyzer.metadata.maven.maven_scraper")
             raise FileNotFoundError(error_msg)
 
         update_time = datetime.fromtimestamp(os.path.getmtime(top_packages_path))
@@ -201,7 +202,12 @@ class MavenTyposquatDetector(TyposquatDetector):
             if group_id and artifact_id:
                 name = f"{group_id}:{artifact_id}"
             else:
-                return False, "Could not determine package name from package info"
+                missing_fields = []
+                if not group_id:
+                    missing_fields.append("groupid")
+                if not artifact_id:
+                    missing_fields.append("artifactid")
+                return False, f"Missing required fields in package info: {', '.join(missing_fields)}"
 
         log.debug(f"Running typosquatting heuristic on Maven package {name}")
         similar_package_names = self.get_typosquatted_package(name)
