@@ -281,12 +281,23 @@ class MavenPackageScanner(PackageScanner):
                 namespace = root.tag.split("}")[0].strip("{")
             ns = {"mvn": namespace} if namespace else {}
 
+            # find email
             for dev in root.findall(".//mvn:developer", ns):
                 email = dev.find("mvn:email", ns)
                 if email is not None and email.text:
                     emails.append(email.text.strip())
             if not emails:
                 log.debug("No email found in the pom.")
+            
+            # find description
+            # Find <description> element
+            description_elem = root.find('mvn:description', ns)
+            if description_elem is not None and description_elem.text:
+                description = description_elem.text.strip()
+                log.debug(f"<description> in pom: {description}")
+            else: 
+                description = ""
+                log.debug("No description found in pom")
 
         except ET.ParseError as e:
             log.warning(f"Failed to parse POM: {pom_path}, error: {e}")
@@ -299,6 +310,7 @@ class MavenPackageScanner(PackageScanner):
                 "artifactid": artifact_id,
                 "version": version,
                 "email": emails,
+                "description": description,
             },
             "path": {
                 "pom_path": pom_path,
