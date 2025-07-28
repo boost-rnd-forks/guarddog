@@ -138,7 +138,7 @@ class MavenPackageScanner(PackageScanner):
                 r = requests.get(url, stream=True, timeout=10, verify=True)
                 if r.status_code != 200:
                     raise Exception(
-                        f"Failed to download Maven package from {url} (status {r.status_code})"
+                        f"Failed to download Maven package from {url} (status {r.status_code}, reason: {r.reason}, content: {r.text[:100]})"
                     )
                 with open(path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
