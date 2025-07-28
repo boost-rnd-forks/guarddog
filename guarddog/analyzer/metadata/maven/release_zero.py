@@ -1,6 +1,6 @@
 """ Release Zero Detector
 
-Detects when a package has its latest release version to 0.0.0
+Detects when a package has its latest release version as 0.0.0
 """
 import logging
 from typing import Optional
