@@ -15,13 +15,13 @@ class MavenReleaseZeroDetector(ReleaseZeroDetector):
                version: Optional[str] = None) -> tuple[bool, str]:
         """
         Detects if a Maven package's latest version is 0.0.0 or 0.0
-        
+
         Args:
             package_info: Maven package metadata
             path: Optional path to package
             name: Optional package name
             version: Optional package version
-            
+
         Returns:
             tuple[bool, str]: (True if version is 0, message with details)
         """
