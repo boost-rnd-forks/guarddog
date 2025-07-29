@@ -9,16 +9,19 @@ from pathlib import Path
 from typing import Iterable, Optional, Dict
 
 from guarddog.analyzer.metadata import get_metadata_detectors
-from guarddog.analyzer.sourcecode import get_sourcecode_rules, SempgrepRule, YaraRule
+from guarddog.analyzer.sourcecode import (
+    get_sourcecode_rules,
+    get_sourcecode_detectors,
+    SempgrepRule,
+    YaraRule,
+)
 from guarddog.utils.config import YARA_EXT_EXCLUDE
 from guarddog.ecosystems import ECOSYSTEM
 
 MAX_BYTES_DEFAULT = 10_000_000
 SEMGREP_TIMEOUT_DEFAULT = 10
 
-SOURCECODE_RULES_PATH = os.path.join(
-    os.path.dirname(__file__), "sourcecode"
-)
+SOURCECODE_RULES_PATH = os.path.join(os.path.dirname(__file__), "sourcecode")
 log = logging.getLogger("guarddog")
 
 
@@ -42,8 +45,10 @@ class Analyzer:
 
         # Rules and associated detectors
         self.metadata_detectors = get_metadata_detectors(ecosystem)
+        self.sourcecode_detectors = get_sourcecode_detectors(ecosystem)
 
         self.metadata_ruleset: set[str] = set(self.metadata_detectors.keys())
+        self.sourcecode_ruleset: set[str] = set(self.sourcecode_detectors.keys())
         self.semgrep_ruleset: set[str] = set(
             r.id for r in get_sourcecode_rules(ecosystem, SempgrepRule)
         )
@@ -67,7 +72,14 @@ class Analyzer:
             ".semgrep_logs",
         ]
 
-    def analyze(self, path, info=None, rules=None, name: Optional[str] = None, version: Optional[str] = None) -> dict:
+    def analyze(
+        self,
+        path,
+        info=None,
+        rules=None,
+        name: Optional[str] = None,
+        version: Optional[str] = None,
+    ) -> dict:
         """
         Analyzes a package in the given path
 
@@ -97,8 +109,14 @@ class Analyzer:
 
         return {"issues": issues, "errors": errors, "results": results, "path": path}
 
-    def analyze_metadata(self, path: str, info, rules=None, name: Optional[str] = None,
-                         version: Optional[str] = None) -> dict:
+    def analyze_metadata(
+        self,
+        path: str,
+        info,
+        rules=None,
+        name: Optional[str] = None,
+        version: Optional[str] = None,
+    ) -> dict:
         """
         Analyzes the metadata of a given package
 
@@ -127,7 +145,9 @@ class Analyzer:
         for rule in all_rules:
             try:
                 log.debug(f"Running rule {rule} against package '{name}'")
-                rule_matches, message = self.metadata_detectors[rule].detect(info, path, name, version)
+                rule_matches, message = self.metadata_detectors[rule].detect(
+                    info, path, name, version
+                )
                 results[rule] = None
                 if rule_matches:
                     issues += 1
@@ -152,10 +172,24 @@ class Analyzer:
 
         yarascan_results = self.analyze_yara(path, rules)
 
+        scripts_results = self.analyze_sourcecode_scripts(path, rules)
+
         # Concatenate dictionaries together
-        issues = semgrepscan_results["issues"] + yarascan_results["issues"]
-        results = semgrepscan_results["results"] | yarascan_results["results"]
-        errors = semgrepscan_results["errors"] | yarascan_results["errors"]
+        issues = (
+            semgrepscan_results["issues"]
+            + yarascan_results["issues"]
+            + scripts_results["issues"]
+        )
+        results = (
+            semgrepscan_results["results"]
+            | yarascan_results["results"]
+            | scripts_results["results"]
+        )
+        errors = (
+            semgrepscan_results["errors"]
+            | yarascan_results["errors"]
+            | scripts_results["errors"]
+        )
 
         return {"issues": issues, "errors": errors, "results": results, "path": path}
 
@@ -202,7 +236,9 @@ class Analyzer:
                         continue
 
                     scan_file_target_abspath = os.path.join(root, f)
-                    scan_file_target_relpath = os.path.relpath(scan_file_target_abspath, path)
+                    scan_file_target_relpath = os.path.relpath(
+                        scan_file_target_abspath, path
+                    )
 
                     matches = scan_rules.match(scan_file_target_abspath)
                     for m in matches:
@@ -211,7 +247,9 @@ class Analyzer:
                                 finding = {
                                     "location": f"{scan_file_target_relpath}:{i.offset}",
                                     "code": self.trim_code_snippet(str(i.matched_data)),
-                                    'message': m.meta.get("description", f"{m.rule} rule matched")
+                                    "message": m.meta.get(
+                                        "description", f"{m.rule} rule matched"
+                                    ),
                                 }
 
                                 # since yara can match the multiple times in the same file
@@ -254,10 +292,14 @@ class Analyzer:
         errors = {}
         issues = 0
 
-        rules_path = list(map(
-            lambda rule_name: os.path.join(SOURCECODE_RULES_PATH, f"{rule_name}.yml"),
-            all_rules
-        ))
+        rules_path = list(
+            map(
+                lambda rule_name: os.path.join(
+                    SOURCECODE_RULES_PATH, f"{rule_name}.yml"
+                ),
+                all_rules,
+            )
+        )
 
         if len(rules_path) == 0:
             log.debug("No semgrep code rules to run")
@@ -266,7 +308,9 @@ class Analyzer:
         try:
             log.debug(f"Running semgrep code rules against {path}")
             response = self._invoke_semgrep(target=path, rules=rules_path)
-            rule_results = self._format_semgrep_response(response, targetpath=targetpath)
+            rule_results = self._format_semgrep_response(
+                response, targetpath=targetpath
+            )
             issues += sum(len(res) for res in rule_results.values())
 
             results = results | rule_results
@@ -275,12 +319,52 @@ class Analyzer:
 
         return {"results": results, "errors": errors, "issues": issues}
 
+    def analyze_sourcecode_scripts(self, path: str, rules=None) -> dict:
+        """
+        Analyzes the sourcecode of a given package using python scripts
+
+        Args:
+            path (str): path to package
+            rules (set, optional): Set of metadata rules to analyze. Defaults to all rules.
+
+        Returns:
+            dict[str]: map from each sourcecode rule and their corresponding output
+        """
+
+        log.debug(f"Running sourcecode script rules against package '{path}'")
+
+        all_rules = self.sourcecode_ruleset
+        if rules is not None:
+            # filtering the full ruleset witht the user's input
+            all_rules = self.sourcecode_ruleset & rules
+
+        # for each sourcecode rule, is expected to have an nulleable string as result
+        # None value represents that the rule was not matched
+        results: dict[str, Optional[str]] = {}
+        errors = {}
+        issues = 0
+
+        for rule in all_rules:
+            try:
+                log.debug(f"Running rule {rule} against '{path}'")
+                rule_matches, message = self.sourcecode_detectors[rule].detect(path)
+                results[rule] = None
+                if rule_matches:
+                    issues += 1
+                    results[rule] = message
+            except Exception as e:
+                errors[rule] = f"failed to run rule {rule}: {str(e)}"
+
+        return {"results": results, "errors": errors, "issues": issues}
+
     def _invoke_semgrep(self, target: str, rules: Iterable[str]):
         try:
             SEMGREP_MAX_TARGET_BYTES = int(
-                os.getenv("GUARDDOG_SEMGREP_MAX_TARGET_BYTES", MAX_BYTES_DEFAULT))
+                os.getenv("GUARDDOG_SEMGREP_MAX_TARGET_BYTES", MAX_BYTES_DEFAULT)
+            )
             SEMGREP_TIMEOUT = int(
-                os.getenv("GUARDDOG_SEMGREP_TIMEOUT", SEMGREP_TIMEOUT_DEFAULT))
+                os.getenv("GUARDDOG_SEMGREP_TIMEOUT", SEMGREP_TIMEOUT_DEFAULT)
+            )
             cmd = ["semgrep"]
             for rule in rules:
                 cmd.extend(["--config", rule])
@@ -295,7 +379,9 @@ class Analyzer:
             cmd.append(f"--max-target-bytes={SEMGREP_MAX_TARGET_BYTES}")
             cmd.append(target)
             log.debug(f"Invoking semgrep with command line: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, check=True, encoding="utf-8")
+            result = subprocess.run(
+                cmd, capture_output=True, check=True, encoding="utf-8"
+            )
             return json.loads(str(result.stdout))
         except FileNotFoundError:
             raise Exception("unable to find semgrep binary")
@@ -358,9 +444,9 @@ output: {e.output}
             location = file_path + ":" + str(start_line)
 
             finding = {
-                'location': location,
-                'code': code,
-                'message': result["extra"]["message"]
+                "location": location,
+                "code": code,
+                "message": result["extra"]["message"],
             }
 
             rule_results = results[rule_name]
@@ -384,7 +470,7 @@ output: {e.output}
         """
         snippet = []
         try:
-            with open(file_path, 'r') as file:
+            with open(file_path, "r") as file:
                 for current_line_number, line in enumerate(file, start=1):
                     if start_line <= current_line_number <= end_line:
                         snippet.append(line)
@@ -395,12 +481,12 @@ output: {e.output}
         except Exception as e:
             log.error(f"Error reading file {file_path}: {str(e)}")
 
-        return ''.join(snippet)
+        return "".join(snippet)
 
     # Makes sure the matching code to be displayed isn't too long
     def trim_code_snippet(self, code):
         THRESHOLD = 250
         if len(code) > THRESHOLD:
-            return code[: THRESHOLD - 10] + '...' + code[len(code) - 10:]
+            return code[: THRESHOLD - 10] + "..." + code[len(code) - 10 :]
         else:
             return code
