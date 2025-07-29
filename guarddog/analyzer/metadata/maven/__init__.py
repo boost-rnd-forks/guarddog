@@ -1,6 +1,6 @@
 # Maven-specific metadata security rules
 # Currently empty - rules can be added here in the future
-
+from typing import Type
 from guarddog.analyzer.metadata.detector import Detector
 from guarddog.analyzer.metadata.maven.bundled_binary import MavenBundledBinary
 
