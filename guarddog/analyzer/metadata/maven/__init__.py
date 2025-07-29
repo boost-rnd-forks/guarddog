@@ -1,6 +1,6 @@
 # Maven-specific metadata security rules
 # Currently empty - rules can be added here in the future
-
+from typing import Type
 from guarddog.analyzer.metadata.detector import Detector
 from guarddog.analyzer.metadata.maven.unclaimed_maintainer_email_domain import (
     MavenUnclaimedMaintainerEmailDomainDetector,
@@ -8,7 +8,7 @@ from guarddog.analyzer.metadata.maven.unclaimed_maintainer_email_domain import (
 
 MAVEN_METADATA_RULES: dict[str, Detector] = {}
 
-classes = [
+classes: list[Type[Detector]] = [
     MavenUnclaimedMaintainerEmailDomainDetector,
 ]
 
