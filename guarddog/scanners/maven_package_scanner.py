@@ -226,7 +226,6 @@ class MavenPackageScanner(PackageScanner):
         else:
             return None
 
-
     def is_safe_path(self, path: str) -> bool:
         """Basic path safety check to avoid traversal or injection."""
         return os.path.isabs(path) or not (".." in path or path.startswith(("/", "\\")))

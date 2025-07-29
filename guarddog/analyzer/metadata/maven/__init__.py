@@ -8,7 +8,7 @@ from guarddog.analyzer.metadata.maven.unclaimed_maintainer_email_domain import (
 
 MAVEN_METADATA_RULES: dict[str, Detector] = {}
 
-classes: list[Type[Detector]] = [
+classes = [
     MavenUnclaimedMaintainerEmailDomainDetector,
 ]
 
