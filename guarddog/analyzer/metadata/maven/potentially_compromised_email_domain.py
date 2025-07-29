@@ -26,4 +26,4 @@ class MavenPotentiallyCompromisedEmailDomainDetector(
         Returns:
             datetime: creation date of the latest release
         """
-        return package_info["latest_release_date"]
+        return package_info.get("latest_release_date")
