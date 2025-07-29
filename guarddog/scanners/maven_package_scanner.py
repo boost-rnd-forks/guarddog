@@ -275,7 +275,7 @@ class MavenPackageScanner(PackageScanner):
         group_id: str,
         artifact_id: str,
         version: str,
-      ) -> dict:
+    ) -> dict:
         """
         Returns a dict with package info from args and retrieved from parsing pom.xml
         "info"
