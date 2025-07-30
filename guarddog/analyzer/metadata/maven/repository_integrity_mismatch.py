@@ -174,7 +174,9 @@ def exclude_result(file_name, repo_root, pkg_root):
     for pattern in EXCLUDED_PATTERNS:
         if pattern.startswith("*") and file_name.endswith(pattern[1:]):
             return True
-        if file_name.startswith(pattern):
+        elif pattern == ".*" and file_name.startswith("."):
+            return True
+        elif file_name.startswith(pattern):
             return True
     
     # Maven-specific: exclude pom.xml differences if they are just formatting
