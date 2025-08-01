@@ -15,6 +15,7 @@ classes: list[Type[Detector]] = [
     MavenBundledBinary,
     MavenReleaseZeroDetector,
     MavenIntegrityMismatchDetector,
+    MavenDeceptiveAuthor,
 ]
 
 for detectorClass in classes:
