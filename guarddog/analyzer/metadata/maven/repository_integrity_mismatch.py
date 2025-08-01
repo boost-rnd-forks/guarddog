@@ -12,7 +12,7 @@ from typing import Optional, Tuple
 import pygit2  # type: ignore
 import urllib3.util
 
-from guarddog.analyzer.metadata.repository_integrity_mismatch import IntegrityMismatch
+from guarddog.analyzer.metadata.detector import Detector
 
 GH_REPO_REGEX = r'(?:https?://)?(?:www\.)?github\.com/(?:[\w-]+/)(?:[\w-]+)'
 GH_REPO_OWNER_REGEX = r'(?:https?://)?(?:www\.)?github\.com/([\w-]+)/([\w-]+)'
@@ -176,7 +176,7 @@ def exclude_result(file_name, repo_root, pkg_root):
             return True
         elif file_name.startswith(pattern):
             return True
-    
+
     # Maven-specific: exclude pom.xml differences if they are just formatting
     if file_name == "pom.xml":
         try:
@@ -260,7 +260,7 @@ def find_suitable_tags(repo, version):
     return find_suitable_tags_in_list(tags, version)
 
 
-class MavenIntegrityMismatchDetector(IntegrityMismatch):
+class MavenIntegrityMismatchDetector(Detector):
     """
     This heuristic compares source code available on the Maven package source code repository (e.g. GitHub),
     and source code published on Maven Central. If a file is on both sides but has a different content,
@@ -274,12 +274,15 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
     * Only compares decompressed JAR contents, not decompiled Java source
     """
     RULE_NAME = "repository_integrity_mismatch"
-    
+
     def __init__(self):
-        super().__init__()
+        super().__init__(
+            name="repository_integrity_mismatch",
+            description="Identify packages with a linked GitHub repository where the package has extra unexpected files"
+        )
 
     def detect(self, package_info, path: Optional[str] = None, name: Optional[str] = None,
-               version: Optional[str] = None) -> tuple[bool, str]:
+               version: Optional[str] = None) -> tuple[bool, Optional[str]]:
         if name is None:
             raise Exception("Detector needs the name of the package")
         if path is None:
