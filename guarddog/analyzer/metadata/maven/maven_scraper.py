@@ -24,11 +24,11 @@ class MavenScraper:
     def url_encode(self, text: str) -> str:
         """
         Custom URL encoding for package names.
-        
+
         This method replaces specific characters in the input string with their
         percent-encoded equivalents. It is a custom implementation and does not
         follow standard URL encoding conventions.
-        
+
         Characters encoded:
             ':' -> '%3A'
             '/' -> '%2F'
@@ -39,10 +39,10 @@ class MavenScraper:
             '&' -> '%26'
             '?' -> '%3F'
             '#' -> '%23'
-        
+
         Args:
             text (str): The input string to encode.
-        
+
         Returns:
             str: The encoded string with specific characters replaced.
         """
