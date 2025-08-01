@@ -1,208 +1,329 @@
 import logging
 import os
-import shutil
+import subprocess
 import typing
 import xml.etree.ElementTree as ET
+import requests
+import filecmp
+import zipfile
+import shutil
+from urllib.parse import urlparse
 
 from guarddog.analyzer.analyzer import Analyzer
 from guarddog.ecosystems import ECOSYSTEM
 from guarddog.scanners.scanner import PackageScanner
-from guarddog.utils.archives import safe_extract
 
 log = logging.getLogger("guarddog")
+
+MAVEN_CENTRAL_BASE_URL = "https://repo1.maven.org/maven2"
+TRUSTED_DOMAINS = {"repo1.maven.org", "search.maven.org"}
+CFR_JAR_PATH = os.environ.get(
+    "CFR_JAR_PATH",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../cfr-0.152.jar")),
+)
 
 
 class MavenPackageScanner(PackageScanner):
     def __init__(self) -> None:
         super().__init__(Analyzer(ECOSYSTEM.MAVEN))
 
-    def _get_path_for_artifact(self, package_name: str, version: str, classifier: typing.Optional[str] = None,
-                               extension: str = "jar") -> str:
-        group_id, artifact_id = package_name.split(":")
+    def download_and_get_package_info(
+        self, directory: str, package_name: str, version=None
+    ) -> typing.Tuple[dict, str]:
+        """
+        Downloads the package from Maven Central (.jar)
+        Downloads the corresponding pom file
+        Decompressed the .jar
+        Decompile the .jar
+        Args:
+            * `package_name` (str): group_id:artifact_id of the package on Maven
+            * `version` (str): version of the package
+            * `directory` (str): name of the dir to host the package. Created if does not exist
+        Returns:
+            * package_info (dict): necessary metadata for analysis
+                - `path` (str): path to the local package:
+                    - pom.xml
+                    - decompressed/decompressed_jar
+                    - decompiled/decompiled_java_files
+            * path to the decompiled sourcecode
+        """
+        if version is None:
+            raise ValueError("Version must be specified for Maven packages")
+        try:
+            group_id, artifact_id = package_name.split(":")
+        except ValueError:
+            raise Exception(
+                f"Invalid package format: '{package_name}'. Expected 'groupId:artifactId'"
+            )
+        if not directory:
+            directory = artifact_id
+
+        jar_path, pom_path = self.download_package(
+            group_id, artifact_id, directory, version
+        )
+
+        # decompress jar
+        decompressed_path: str = ""
+        if jar_path.endswith(".jar"):
+            log.debug(f"Extracting {jar_path} into {directory}...")
+            decompressed_path = os.path.join(directory, "decompressed")
+            self.extract_jar(jar_path, decompressed_path)
+        else:
+            log.debug(f"Could not extract {jar_path}")
+        if (
+            os.path.exists(decompressed_path)
+            and os.path.isdir(decompressed_path)
+            and len(os.listdir(decompressed_path)) > 0
+        ):
+            log.debug(f"Successfully extracted jar in {decompressed_path}.")
+        else:
+            log.error(f"The project could not be extracted from {jar_path}")
+
+        # decompile jar
+        decompiled_path: str = os.path.join(directory, "decompiled")
+        self.decompile_jar(jar_path, decompiled_path)
+
+        # diff between retrieved and decompressed pom
+        jar_pom: tuple[bool, str] | None = self.diff_pom(
+            decompressed_path, group_id, artifact_id, pom_path
+        )
+        if jar_pom:
+            same, pom_jar_path = jar_pom
+            if same:
+                log.debug("Same pom.xml in Maven and decompressed project!")
+            else:
+                log.warning("The 2 found pom.xml for the project differ.")
+                log.warning(f"\t -pom retrieved from Maven: {pom_path}")
+                log.warning(f"\t -pom found in decompressed package: {pom_jar_path}")
+                pom_path = pom_jar_path
+        # move pom file in decompiled project for source code analysis
+        shutil.move(pom_path, decompiled_path)
+        pom_path = os.path.join(decompiled_path, "pom.xml")
+
+        # package_info
+        package_info: dict = self.get_package_info(
+            pom_path, decompressed_path, decompiled_path, group_id, artifact_id, version
+        )
+        log.debug(f"Package info: {package_info}")
+        return package_info, decompiled_path
+
+    def download_package(
+        self, group_id: str, artifact_id: str, directory: str, version: str
+    ) -> tuple[str, str]:
+        """
+        Downloads the Maven package .jar and pom for the specified version
+        in directory
+        Args:
+            * `package_name` (str): group_id:artifact_id of the package on Maven
+            * `version` (str): version of the package
+            * `directory` (str): name of the dir to host the package. Created if does not exist
+        Returns:
+            Paths of the downloaded jar file and the corresponding downloaded pom.xml
+        """
+
         group_path = group_id.replace(".", "/")
-        artifact_path = os.path.join(group_path, artifact_id, version)
 
-        file_name = f"{artifact_id}-{version}"
-        if classifier:
-            file_name += f"-{classifier}"
-        file_name += f".{extension}"
+        # urls to download pom and jar
+        base_url = f"{MAVEN_CENTRAL_BASE_URL}/{group_path}/{artifact_id}/{version}"
+        jar_url = f"{base_url}/{artifact_id}-{version}.jar"
+        pom_url = f"{base_url}/{artifact_id}-{version}.pom"
 
-        return os.path.join(artifact_path, file_name)
+        # destination files
+        log.debug(f"Downloading package in {directory} ")
+        os.makedirs(directory, exist_ok=True)
+        jar_path = os.path.join(directory, f"{artifact_id}-{version}.jar")
+        pom_path = os.path.join(directory, "pom.xml")
 
-    def _parse_pom(self, pom_path: str) -> dict:
+        # We could also use the download_decompressed method from scanner.py
+        try:
+            for url, path in [(jar_url, jar_path), (pom_url, pom_path)]:
+                # verify=True ensures SSL certificate validation
+                r = requests.get(url, stream=True, timeout=10, verify=True)
+                final_url = r.url
+                parsed = urlparse(final_url)
+                if parsed.hostname not in TRUSTED_DOMAINS:
+                    raise ValueError(
+                        f"Unsafe redirect detected: {final_url} not in trusted domains"
+                    )
+
+                if r.status_code != 200:
+                    raise Exception(
+                        f"Failed to download Maven package from {url} (status {r.status_code})"
+                    )
+                with open(path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+
+            log.debug(f"Downloaded JAR to: {jar_path}")
+            log.debug(f"Downloaded POM to: {pom_path}")
+            return jar_path, pom_path
+
+        except Exception as e:
+            raise Exception(f"Error retrieving Maven package: {e}")
+
+    def extract_jar(self, jar_path: str, output_dir: str):
+        """
+        Extract a jar archive file with zipfile
+        - `jar_path` (str): path to the jar to extract
+        - `output_dir` (str): directory to decompress the jar to
+        """
+        with zipfile.ZipFile(jar_path, "r") as jar:
+            log.debug("Extracting jar package...")
+            output_dir_abs = os.path.abspath(output_dir)
+            for file in jar.namelist():
+                # resolve paths and removes ../
+                safe_path = os.path.abspath(os.path.join(output_dir, file))
+                # ensure safe_path in the output dir
+                if os.path.commonpath([output_dir_abs, safe_path]) != output_dir_abs:
+                    log.warning(f"Skipping potentially unsafe file: {file}")
+                    continue
+                if file.endswith("/"):  # It's a directory
+                    os.makedirs(safe_path, exist_ok=True)
+                    continue
+                os.makedirs(os.path.dirname(safe_path), exist_ok=True)
+                with open(safe_path, "wb") as f:
+                    f.write(jar.read(file))
+        log.debug(f"extracted to {output_dir}")
+
+    def find_pom(self, path: str, groupId: str, artifactId: str) -> str | None:
+        """
+        Finds the pom.xml in the package at `path` if exists
+        """
+        pom_dir = os.path.join(path, "META-INF", "maven", groupId, artifactId)
+        if not os.path.isdir(pom_dir):
+            log.warning(f"Directory {pom_dir} does not exist. Cannot look for pom.xml.")
+            return None
+        log.debug(f"Looking for pom.xml in {os.listdir(pom_dir)}")
+        pom_path = os.path.join(pom_dir, "pom.xml")
+        if os.path.isfile(pom_path):
+            log.debug(f"Found pom.xml in decompressed project: {pom_path}")
+            return pom_path
+        else:
+            log.warning(f"No pom.xml found at {pom_path}")
+            return None
+
+    def diff_pom(
+        self, path: str, groupId: str, artifactId: str, pom_path: str
+    ) -> tuple[bool, str] | None:
+        """
+        Args
+            - `path` (str): path to the decompressed project
+            - `groupId` (str): groupid of the package
+            - `artifactId` (str): artifact id of the package
+            - `pom_path` (str): pom.xml path to compare the project pom to
+
+        Compare both poms and returns a bool
+        Returns:
+            - True if same poms
+            - False if not
+            - If pom found, returns the pom path
+        """
+        if not os.path.exists(pom_path):
+            return None
+        jar_pom = self.find_pom(path, groupId, artifactId)
+        if jar_pom:
+            return filecmp.cmp(jar_pom, pom_path), jar_pom
+        else:
+            return None
+
+    def is_safe_path(self, path: str) -> bool:
+        """Basic path safety check to avoid traversal or injection."""
+        return os.path.isabs(path) or not (".." in path or path.startswith(("/", "\\")))
+
+    def is_jar_file(self, path: str) -> bool:
+        return path.endswith(".jar") and os.path.isfile(path)
+
+    def decompile_jar(self, jar_path: str, dest_path: str):
+        """
+        Decompiles the .jar file using CFR decompiler.
+        Args:
+            - `jar_path` (str): path of the .jar to decompile
+            - `dest_path` (str): path of the destination folder
+            to store the resulting .class files
+        """
+        if not self.is_safe_path(jar_path) or not self.is_jar_file(jar_path):
+            raise ValueError(f"Invalid JAR path: {jar_path}")
+        if not os.path.isfile(CFR_JAR_PATH):
+            raise FileNotFoundError(f"CFR jar file not found: {CFR_JAR_PATH}")
+        if not self.is_safe_path(dest_path):
+            raise ValueError(f"Invalid destination path: {dest_path}")
+
+        os.makedirs(dest_path, exist_ok=True)
+
+        command = [
+            "java",
+            "-jar",
+            CFR_JAR_PATH,
+            jar_path,
+            "--outputdir",
+            dest_path,
+            "--silent",
+            "true",
+        ]
+
+        try:
+            subprocess.run(command, check=True)
+            log.debug(f"Decompiled JAR written to: {os.path.abspath(dest_path)}")
+        except subprocess.CalledProcessError as e:
+            log.error(f"Error running CFR: {e}")
+
+    def get_package_info(
+        self,
+        pom_path: str,
+        decompressed_path: str,
+        decompiled_path: str,
+        group_id: str,
+        artifact_id: str,
+        version: str,
+    ) -> dict:
+        """
+        Returns a dict with package info from args and retrieved from parsing pom.xml
+        "info"
+            - "groupid"
+            - "artifactid"
+            - "version"
+            - "email": list[str]
+        "path"
+            - "pom_path"
+            - "decompressed_path"
+            - "decompiled_path"
+        """
+        emails = []
+        log.debug(f"Parsing pom {pom_path}")
+        if not os.path.isfile(pom_path):
+            log.warning(f"WARNING: {pom_path} does not exist.")
         try:
             tree = ET.parse(pom_path)
+            root = tree.getroot()
+
+            # Detect namespace if present
+            namespace = ""
+            if "}" in root.tag:
+                namespace = root.tag.split("}")[0].strip("{")
+            ns = {"mvn": namespace} if namespace else {}
+
+            for dev in root.findall(".//mvn:developer", ns):
+                email = dev.find("mvn:email", ns)
+                if email is not None and email.text:
+                    emails.append(email.text.strip())
+            if not emails:
+                log.debug("No email found in the pom.")
+
         except ET.ParseError as e:
-            log.warning(f"Could not parse pom.xml at {pom_path}: {e}")
-            return {}
-
-        root = tree.getroot()
-
-        namespace = ""
-        if '}' in root.tag:
-            namespace = root.tag.split('}')[0].strip('{')
-
-        def find_text(elem, tag):
-            ns_tag = f"{{{namespace}}}{tag}" if namespace else tag
-            found = elem.find(ns_tag)
-            return found.text if found is not None else None
-
-        group_id = find_text(root, "groupId")
-        artifact_id = find_text(root, "artifactId")
-        version = find_text(root, "version")
-
-        # Inherit from parent
-        parent = root.find(f"{{{namespace}}}parent" if namespace else "parent")
-        if parent is not None:
-            if not group_id:
-                group_id = find_text(parent, "groupId")
-            if not version:
-                version = find_text(parent, "version")
-
-        if not artifact_id:
-            log.warning(f"Could not extract artifactId from {pom_path}")
-
-        name = f"{group_id}:{artifact_id}" if group_id and artifact_id else (artifact_id or "unknown")
+            log.warning(f"Failed to parse POM: {pom_path}, error: {e}")
+        except Exception as e:
+            log.warning(f"Unexpected error parsing POM: {e}")
 
         return {
             "info": {
-                "name": name,
-                "version": version or "unknown"
-            }
+                "groupid": group_id,
+                "artifactid": artifact_id,
+                "version": version,
+                "email": emails,
+            },
+            "path": {
+                "pom_path": pom_path,
+                "decompressed_path": decompressed_path,
+                "decompiled_path": decompiled_path,
+            },
         }
-
-    def _has_java_source_files(self, directory: str) -> bool:
-        """Check if directory contains Java source files directly"""
-        for root, dirs, files in os.walk(directory):
-            for file in files:
-                if file.endswith('.java'):
-                    return True
-        return False
-
-    def download_package(self, package_name: str, directory: str, version: typing.Optional[str] = None) -> str:
-        if version is None:
-            raise ValueError("Version must be specified for Maven packages")
-
-        local_maven_repo = os.path.expanduser("~/.m2/repository")
-        _, artifact_id = package_name.split(":")
-
-        # Try sources JAR first
-        sources_path_in_repo = self._get_path_for_artifact(package_name, version, classifier="sources", extension="jar")
-        full_sources_path = os.path.join(local_maven_repo, sources_path_in_repo)
-
-        jar_to_extract = None
-        jar_type = None
-
-        if os.path.exists(full_sources_path):
-            jar_to_extract = full_sources_path
-            jar_type = "sources"
-            log.debug(f"Found sources JAR for {package_name}:{version}")
-        else:
-            # Fallback to regular JAR
-            regular_path_in_repo = self._get_path_for_artifact(package_name, version, classifier=None, extension="jar")
-            full_regular_path = os.path.join(local_maven_repo, regular_path_in_repo)
-
-            if os.path.exists(full_regular_path):
-                jar_to_extract = full_regular_path
-                jar_type = "regular"
-                log.debug(f"Found regular JAR for {package_name}:{version} (sources not available)")
-            else:
-                raise FileNotFoundError(f"Could not find JAR for {package_name}:{version} in local Maven repository. "
-                                        f"Looked for sources at {full_sources_path} and regular at {full_regular_path}")
-
-        # Copy and extract the JAR
-        destination_jar = os.path.join(directory, f"{artifact_id}-{version}-{jar_type}.jar")
-        shutil.copyfile(jar_to_extract, destination_jar)
-
-        unzippedpath = os.path.join(directory, package_name.replace(":", "_"))
-        safe_extract(destination_jar, unzippedpath)
-        return unzippedpath
-
-    def download_and_get_package_info(self, directory: str, package_name: str,
-                                      version: typing.Optional[str] = None) -> typing.Tuple[dict, str]:
-        if version is None:
-            raise ValueError("Version must be specified for Maven packages")
-
-        extract_dir = self.download_package(package_name, directory, version)
-
-        local_maven_repo = os.path.expanduser("~/.m2/repository")
-        pom_path_in_repo = self._get_path_for_artifact(package_name, version, classifier=None, extension="pom")
-        full_pom_path = os.path.join(local_maven_repo, pom_path_in_repo)
-
-        if not os.path.exists(full_pom_path):
-            raise FileNotFoundError(f"Could not find pom for {package_name}:{version} in local Maven repository. "
-                                    f"Looked for {full_pom_path}")
-
-        package_info = self._parse_pom(full_pom_path)
-        package_info.setdefault("info", {})["version"] = version
-
-        return package_info, extract_dir
-
-    def get_local_package_info(self, path: str) -> tuple[dict, str]:
-        """
-        Handle two modes:
-        1. Directory with pom.xml and Java source files directly
-        2. Directory containing a JAR file to extract
-        """
-        # Mode 1: Directory with Java source files and pom.xml
-        pom_path = os.path.join(path, "pom.xml")
-        if os.path.exists(pom_path) and self._has_java_source_files(path):
-            log.debug(f"Found Java source files directly in {path}")
-            package_info = self._parse_pom(pom_path)
-            return package_info, path
-
-        # Mode 2: Directory contains a JAR file
-        jar_files = [f for f in os.listdir(path) if f.endswith('.jar')]
-        if jar_files:
-            # Use the first JAR file found
-            jar_file = jar_files[0]
-            jar_path = os.path.join(path, jar_file)
-
-            # Extract to a subdirectory
-            extract_dir = os.path.join(path, "extracted")
-            # Clear existing extract directory to avoid stale files
-            if os.path.exists(extract_dir):
-                shutil.rmtree(extract_dir)
-            os.makedirs(extract_dir)
-            safe_extract(jar_path, extract_dir)
-            log.debug(f"Extracted JAR {jar_file} to {extract_dir}")
-
-            # Look for pom.xml in extracted content or in the original directory
-            extracted_pom = os.path.join(extract_dir, "META-INF", "maven")
-            package_info = {}
-
-            # Try to find POM in META-INF/maven structure
-            if os.path.exists(extracted_pom):
-                for root, dirs, files in os.walk(extracted_pom):
-                    for file in files:
-                        if file == "pom.xml":
-                            pom_file_path = os.path.join(root, file)
-                            package_info = self._parse_pom(pom_file_path)
-                            break
-                    if package_info:
-                        break
-
-            # Fallback: check if there's a pom.xml in the original directory
-            if not package_info and os.path.exists(pom_path):
-                package_info = self._parse_pom(pom_path)
-
-            # If still no package info, create minimal info from JAR filename
-            if not package_info:
-                jar_name = os.path.splitext(jar_file)[0]
-                package_info = {
-                    "info": {
-                        "name": jar_name,
-                        "version": "unknown"
-                    }
-                }
-                log.warning(f"Could not find POM information for {jar_file}, using filename as package name")
-
-            return package_info, extract_dir
-
-        # Fallback: try just pom.xml without Java files (project directory)
-        if os.path.exists(pom_path):
-            log.debug(f"Found pom.xml in {path} but no Java source files")
-            package_info = self._parse_pom(pom_path)
-            return package_info, path
-
-        raise Exception(f"No pom.xml or JAR files found in {path}")
