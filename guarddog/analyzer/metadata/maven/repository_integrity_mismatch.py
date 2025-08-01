@@ -7,12 +7,29 @@ import logging
 import os
 import re
 import xml.etree.ElementTree as ET
+from abc import abstractmethod
 from typing import Optional, Tuple
 
 import pygit2  # type: ignore
 import urllib3.util
 
 from guarddog.analyzer.metadata.detector import Detector
+
+
+class IntegrityMismatch(Detector):
+    """This package contains files that have been tampered with between the source repository and the package CDN"""
+    RULE_NAME = "repository_integrity_mismatch"
+
+    def __init__(self):
+        super().__init__(
+            name="repository_integrity_mismatch",
+            description="Identify packages with a linked GitHub repository where the package has extra unexpected files"
+        )
+
+    @abstractmethod
+    def detect(self, package_info, path: Optional[str] = None, name: Optional[str] = None,
+               version: Optional[str] = None) -> tuple[bool, Optional[str]]:
+        pass
 
 GH_REPO_REGEX = r'(?:https?://)?(?:www\.)?github\.com/(?:[\w-]+/)(?:[\w-]+)'
 GH_REPO_OWNER_REGEX = r'(?:https?://)?(?:www\.)?github\.com/([\w-]+)/([\w-]+)'
@@ -260,7 +277,7 @@ def find_suitable_tags(repo, version):
     return find_suitable_tags_in_list(tags, version)
 
 
-class MavenIntegrityMismatchDetector(Detector):
+class MavenIntegrityMismatchDetector(IntegrityMismatch):
     """
     This heuristic compares source code available on the Maven package source code repository (e.g. GitHub),
     and source code published on Maven Central. If a file is on both sides but has a different content,
@@ -276,10 +293,7 @@ class MavenIntegrityMismatchDetector(Detector):
     RULE_NAME = "repository_integrity_mismatch"
 
     def __init__(self):
-        super().__init__(
-            name="repository_integrity_mismatch",
-            description="Identify packages with a linked GitHub repository where the package has extra unexpected files"
-        )
+        super().__init__()
 
     def detect(self, package_info, path: Optional[str] = None, name: Optional[str] = None,
                version: Optional[str] = None) -> tuple[bool, Optional[str]]:
