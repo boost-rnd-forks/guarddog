@@ -7,6 +7,7 @@ import requests
 import filecmp
 import zipfile
 import shutil
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from guarddog.analyzer.analyzer import Analyzer
@@ -47,14 +48,23 @@ class MavenPackageScanner(PackageScanner):
                     - decompiled/decompiled_java_files
             * path to the decompiled sourcecode
         """
-        if version is None:
-            raise ValueError("Version must be specified for Maven packages")
         try:
             group_id, artifact_id = package_name.split(":")
         except ValueError:
             raise Exception(
                 f"Invalid package format: '{package_name}'. Expected 'groupId:artifactId'"
             )
+        if version is None:
+            latest_version, _ = self.get_latest_maven_version(group_id, artifact_id)
+            if latest_version is None:
+                raise ValueError(
+                    "Version must be specified for Maven packages. Could not find latest version"
+                )
+            else:
+                version = latest_version
+                log.debug("No version specified")
+                log.debug(f"-->Using version {version} of {package_name}")
+
         if not directory:
             directory = artifact_id
 
@@ -225,6 +235,40 @@ class MavenPackageScanner(PackageScanner):
             return filecmp.cmp(jar_pom, pom_path), jar_pom
         else:
             return None
+
+    def get_latest_maven_version(self, group_id: str, artifact_id: str):
+        """
+        Fetches the latest release of the project and the release date
+        from https://search.maven.org/solrsearch/select
+        Returns
+            - latest-version: str
+            - release-date: datetime
+        """
+        url = "https://search.maven.org/solrsearch/select"
+        params = {
+            "q": f'g:"{group_id}" AND a:"{artifact_id}"',
+            "rows": "1",
+            "wt": "json",
+        }
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                docs = data.get("response", {}).get("docs", [])
+                if docs:
+                    latest_version = docs[0].get("latestVersion")
+                    timestamp = docs[0].get("timestamp")
+                    if latest_version and timestamp:
+                        release_date = datetime.fromtimestamp(timestamp / 1000, timezone.utc)
+                        return latest_version, release_date
+        except requests.exceptions.ConnectionError:
+            log.error("Failed to connect to Maven repository.")
+        except requests.exceptions.Timeout:
+            log.error("Request to Maven repository timed out.")
+        except requests.exceptions.RequestException as e:
+            log.error(f"An error occurred while fetching Maven data: {e}")
+
+        return None, None
 
     def is_safe_path(self, path: str) -> bool:
         """Basic path safety check to avoid traversal or injection."""
