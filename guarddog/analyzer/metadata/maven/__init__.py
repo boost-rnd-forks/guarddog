@@ -6,6 +6,7 @@ from guarddog.analyzer.metadata.maven.release_zero import MavenReleaseZeroDetect
 from guarddog.analyzer.metadata.maven.unclaimed_maintainer_email_domain import (
     MavenUnclaimedMaintainerEmailDomainDetector,
 )
+from guarddog.analyzer.metadata.maven.repository_integrity_mismatch import MavenIntegrityMismatchDetector
 
 MAVEN_METADATA_RULES: dict[str, Detector] = {}
 
@@ -14,6 +15,7 @@ classes = [
     MavenDeceptiveAuthor,
     MavenReleaseZeroDetector,
     MavenUnclaimedMaintainerEmailDomainDetector,
+    MavenIntegrityMismatchDetector,
 ]
 
 for detectorClass in classes:
