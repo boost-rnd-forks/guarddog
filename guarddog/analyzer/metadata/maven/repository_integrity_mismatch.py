@@ -7,29 +7,12 @@ import logging
 import os
 import re
 import xml.etree.ElementTree as ET
-from abc import abstractmethod
 from typing import Optional, Tuple
 
 import pygit2  # type: ignore
 import urllib3.util
 
-from guarddog.analyzer.metadata.detector import Detector
-
-
-class IntegrityMismatch(Detector):
-    """This package contains files that have been tampered with between the source repository and the package CDN"""
-    RULE_NAME = "repository_integrity_mismatch"
-
-    def __init__(self):
-        super().__init__(
-            name="repository_integrity_mismatch",
-            description="Identify packages with a linked GitHub repository where the package has extra unexpected files"
-        )
-
-    @abstractmethod
-    def detect(self, package_info, path: Optional[str] = None, name: Optional[str] = None,
-               version: Optional[str] = None) -> tuple[bool, Optional[str]]:
-        pass
+from guarddog.analyzer.metadata.repository_integrity_mismatch import IntegrityMismatch
 
 GH_REPO_REGEX = r'(?:https?://)?(?:www\.)?github\.com/(?:[\w-]+/)(?:[\w-]+)'
 GH_REPO_OWNER_REGEX = r'(?:https?://)?(?:www\.)?github\.com/([\w-]+)/([\w-]+)'
@@ -296,7 +279,7 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
         super().__init__()
 
     def detect(self, package_info, path: Optional[str] = None, name: Optional[str] = None,
-               version: Optional[str] = None) -> tuple[bool, Optional[str]]:
+               version: Optional[str] = None) -> tuple[bool, str]:
         if name is None:
             raise Exception("Detector needs the name of the package")
         if path is None:

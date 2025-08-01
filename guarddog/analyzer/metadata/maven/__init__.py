@@ -13,9 +13,7 @@ MAVEN_METADATA_RULES: dict[str, Detector] = {}
 
 classes: list[Type[Detector]] = [
     MavenBundledBinary,
-    MavenDeceptiveAuthor,
     MavenReleaseZeroDetector,
-    MavenUnclaimedMaintainerEmailDomainDetector,
     MavenIntegrityMismatchDetector,
 ]
 
