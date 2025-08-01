@@ -274,6 +274,9 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
     * Only compares decompressed JAR contents, not decompiled Java source
     """
     RULE_NAME = "repository_integrity_mismatch"
+    
+    def __init__(self):
+        super().__init__()
 
     def detect(self, package_info, path: Optional[str] = None, name: Optional[str] = None,
                version: Optional[str] = None) -> tuple[bool, str]:
