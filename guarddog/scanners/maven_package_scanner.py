@@ -7,7 +7,7 @@ import requests
 import filecmp
 import zipfile
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from guarddog.analyzer.analyzer import Analyzer
@@ -250,17 +250,23 @@ class MavenPackageScanner(PackageScanner):
             "rows": "1",
             "wt": "json",
         }
-
-        response = requests.get(url, params=params)
-        if response.status_code == 200:
-            data = response.json()
-            docs = data.get("response", {}).get("docs", [])
-            if docs:
-                latest_version = docs[0].get("latestVersion")
-                timestamp = docs[0].get("timestamp")
-                if latest_version and timestamp:
-                    release_date = datetime.fromtimestamp(timestamp / 1000)
-                    return latest_version, release_date
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                docs = data.get("response", {}).get("docs", [])
+                if docs:
+                    latest_version = docs[0].get("latestVersion")
+                    timestamp = docs[0].get("timestamp")
+                    if latest_version and timestamp:
+                        release_date = datetime.fromtimestamp(timestamp / 1000, timezone.utc)
+                        return latest_version, release_date
+        except requests.exceptions.ConnectionError:
+            log.error("Failed to connect to Maven repository.")
+        except requests.exceptions.Timeout:
+            log.error("Request to Maven repository timed out.")
+        except requests.exceptions.RequestException as e:
+            log.error(f"An error occurred while fetching Maven data: {e}")
 
         return None, None
 
