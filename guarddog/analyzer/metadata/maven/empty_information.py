@@ -7,8 +7,6 @@ from typing import Optional
 
 from guarddog.analyzer.metadata.empty_information import EmptyInfoDetector
 
-MESSAGE = "This package has an empty description on Maven in the pom.xml"
-
 log = logging.getLogger("guarddog")
 
 

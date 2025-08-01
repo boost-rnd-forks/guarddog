@@ -289,6 +289,7 @@ class MavenPackageScanner(PackageScanner):
             - "decompiled_path"
         """
         emails = []
+        description = ""
         log.debug(f"Parsing pom {pom_path}")
         if not os.path.isfile(pom_path):
             log.warning(f"WARNING: {pom_path} does not exist.")
@@ -317,7 +318,6 @@ class MavenPackageScanner(PackageScanner):
                 description = description_elem.text.strip()
                 log.debug(f"<description> in pom: {description}")
             else:
-                description = ""
                 log.debug("No description found in pom")
 
         except ET.ParseError as e:
