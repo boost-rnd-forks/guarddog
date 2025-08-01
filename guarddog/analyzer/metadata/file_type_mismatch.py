@@ -231,8 +231,8 @@ class FileTypeMismatchDetector(Detector):
                     )
                 else:
                     messages.append(
-                        f"File '{mismatch['file']}' has text extension '{mismatch['claimed_extension']}'
-                        but contains binary data"
+                        f"File '{mismatch['file']}' has text extension '{mismatch['claimed_extension']}' "
+                        "but contains binary data"
                     )
 
             return True, "\n".join(messages)
