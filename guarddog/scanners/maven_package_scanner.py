@@ -289,6 +289,7 @@ class MavenPackageScanner(PackageScanner):
             - "decompiled_path"
         """
         emails = []
+        description = ""
         log.debug(f"Parsing pom {pom_path}")
         if not os.path.isfile(pom_path):
             log.warning(f"WARNING: {pom_path} does not exist.")
@@ -302,6 +303,7 @@ class MavenPackageScanner(PackageScanner):
                 namespace = root.tag.split("}")[0].strip("{")
             ns = {"mvn": namespace} if namespace else {}
 
+            # find email
             for dev in root.findall(".//mvn:developer", ns):
                 email = dev.find("mvn:email", ns)
                 if email is not None and email.text:
@@ -309,17 +311,26 @@ class MavenPackageScanner(PackageScanner):
             if not emails:
                 log.debug("No email found in the pom.")
 
+            # find description
+            # Find <description> element
+            description_elem = root.find("mvn:description", ns)
+            if description_elem is not None and description_elem.text:
+                description = description_elem.text.strip()
+                log.debug(f"<description> in pom: {description}")
+            else:
+                log.debug("No description found in pom")
+
         except ET.ParseError as e:
             log.warning(f"Failed to parse POM: {pom_path}, error: {e}")
         except Exception as e:
             log.warning(f"Unexpected error parsing POM: {e}")
-
         return {
             "info": {
                 "groupid": group_id,
                 "artifactid": artifact_id,
                 "version": version,
                 "email": emails,
+                "description": description,
             },
             "path": {
                 "pom_path": pom_path,
