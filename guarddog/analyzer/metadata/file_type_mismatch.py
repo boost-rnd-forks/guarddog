@@ -82,7 +82,7 @@ class FileTypeMismatchDetector(Detector):
 
         Args:
             file_path (str): Path to the file to analyze
-   
+
         Returns:
             Optional[str]: Detected file extension or None if not detected
         """
@@ -118,7 +118,7 @@ class FileTypeMismatchDetector(Detector):
 
         Args:
             file_path (str): Path to the file to analyze
- 
+
         Returns:
             bool: True if file appears to be binary
         """
@@ -247,7 +247,7 @@ class FileTypeMismatchDetector(Detector):
         Args:
             claimed_ext (str): Claimed file extension
             detected_type (str): Detected file type
- 
+
         Returns:
             bool: True if the mismatch is acceptable
         """

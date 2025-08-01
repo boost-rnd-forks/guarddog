@@ -32,7 +32,7 @@ class MavenFileTypeMismatchDetector(FileTypeMismatchDetector):
         Args:
             package_info (dict): Maven package metadata
             path (str): Package path
-    
+
         Returns:
             Dict[str, str]: Mapping of relative paths to absolute paths
         """
