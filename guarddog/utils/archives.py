@@ -2,10 +2,15 @@ import logging
 import os
 import stat
 import zipfile
+import subprocess
 
 import tarsafe  # type:ignore
 
 log = logging.getLogger("guarddog")
+CFR_JAR_PATH = os.environ.get(
+    "CFR_JAR_PATH",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../cfr-0.152.jar")),
+)
 
 
 def is_supported_archive(path: str) -> bool:
@@ -20,6 +25,7 @@ def is_supported_archive(path: str) -> bool:
         bool: Represents the decision reached for the file
 
     """
+
     def is_tar_archive(path: str) -> bool:
         tar_exts = [".bz2", ".bzip2", ".gz", ".gzip", ".tgz", ".xz"]
 
@@ -68,7 +74,7 @@ def safe_extract(source_archive: str, target_directory: str) -> None:
         recurse_add_perms(target_directory)
 
     elif zipfile.is_zipfile(source_archive):
-        with zipfile.ZipFile(source_archive, 'r') as zip:
+        with zipfile.ZipFile(source_archive, "r") as zip:
             for file in zip.namelist():
                 # Note: zip.extract cleans up any malicious file name
                 # such as directory traversal attempts This is not the
@@ -76,3 +82,72 @@ def safe_extract(source_archive: str, target_directory: str) -> None:
                 zip.extract(file, path=os.path.join(target_directory, file))
     else:
         raise ValueError(f"unsupported archive extension: {source_archive}")
+
+
+def extract_jar(jar_path: str, output_dir: str):
+    """
+    Extract a jar archive file with zipfile
+    - `jar_path` (str): path to the jar to extract
+    - `output_dir` (str): directory to decompress the jar to
+    """
+    with zipfile.ZipFile(jar_path, "r") as jar:
+        log.debug("Extracting jar package...")
+        output_dir_abs = os.path.abspath(output_dir)
+        for file in jar.namelist():
+            # resolve paths and removes ../
+            safe_path = os.path.abspath(os.path.join(output_dir, file))
+            # ensure safe_path in the output dir
+            if os.path.commonpath([output_dir_abs, safe_path]) != output_dir_abs:
+                log.warning(f"Skipping potentially unsafe file: {file}")
+                continue
+            if file.endswith("/"):  # It's a directory
+                os.makedirs(safe_path, exist_ok=True)
+                continue
+            os.makedirs(os.path.dirname(safe_path), exist_ok=True)
+            with open(safe_path, "wb") as f:
+                f.write(jar.read(file))
+    log.debug(f"extracted to {output_dir}")
+
+
+def is_safe_path(path: str) -> bool:
+    """Basic path safety check to avoid traversal or injection."""
+    return os.path.isabs(path) or not (".." in path or path.startswith(("/", "\\")))
+
+
+def is_jar_file(path: str) -> bool:
+    return path.endswith(".jar") and os.path.isfile(path)
+
+
+def decompile_jar(jar_path: str, dest_path: str):
+    """
+    Decompiles the .jar file using CFR decompiler.
+    Args:
+        - `jar_path` (str): path of the .jar to decompile
+        - `dest_path` (str): path of the destination folder
+        to store the resulting .class files
+    """
+    if not is_safe_path(jar_path) or not is_jar_file(jar_path):
+        raise ValueError(f"Invalid JAR path: {jar_path}")
+    if not os.path.isfile(CFR_JAR_PATH):
+        raise FileNotFoundError(f"CFR jar file not found: {CFR_JAR_PATH}")
+    if not is_safe_path(dest_path):
+        raise ValueError(f"Invalid destination path: {dest_path}")
+
+    os.makedirs(dest_path, exist_ok=True)
+
+    command = [
+        "java",
+        "-jar",
+        CFR_JAR_PATH,
+        jar_path,
+        "--outputdir",
+        dest_path,
+        "--silent",
+        "true",
+    ]
+
+    try:
+        subprocess.run(command, check=True)
+        log.debug(f"Decompiled JAR written to: {os.path.abspath(dest_path)}")
+    except subprocess.CalledProcessError as e:
+        log.error(f"Error running CFR: {e}")
