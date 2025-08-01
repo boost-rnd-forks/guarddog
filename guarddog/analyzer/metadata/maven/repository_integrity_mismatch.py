@@ -2,12 +2,10 @@
 
 Detects if a Maven package contains files that differ from the source repository
 """
-import configparser
 import hashlib
 import logging
 import os
 import re
-import requests
 import xml.etree.ElementTree as ET
 from typing import Optional, Tuple
 
@@ -40,7 +38,7 @@ def find_best_github_candidate(all_candidates_and_highlighted_link, name):
     If the repository homepage is a GitHub URL, it is used in priority
     """
     candidates, best_github_candidate = all_candidates_and_highlighted_link
-    
+
     # if the project url is a GitHub repository, we should follow this as an instruction. Users will click on it
     if best_github_candidate is not None:
         best_github_candidate = best_github_candidate.replace("http://", "https://")
@@ -95,20 +93,20 @@ def find_github_candidates_from_pom(pom_path) -> Tuple[set[str], Optional[str]]:
     if not os.path.isfile(pom_path):
         log.warning(f"POM file {pom_path} does not exist.")
         return set(), None
-    
+
     github_urls = set()
     best_candidate = None
-    
+
     try:
         tree = ET.parse(pom_path)
         root = tree.getroot()
-        
+
         # Detect namespace if present
         namespace = ""
         if "}" in root.tag:
             namespace = root.tag.split("}")[0].strip("{")
         ns = {"mvn": namespace} if namespace else {}
-        
+
         # Look for SCM section
         scm = root.find(".//mvn:scm", ns) if ns else root.find(".//scm")
         if scm is not None:
@@ -116,12 +114,12 @@ def find_github_candidates_from_pom(pom_path) -> Tuple[set[str], Optional[str]]:
             connection = scm.find("mvn:connection", ns) if ns else scm.find("connection")
             dev_connection = scm.find("mvn:developerConnection", ns) if ns else scm.find("developerConnection")
             scm_url = scm.find("mvn:url", ns) if ns else scm.find("url")
-            
+
             # Parse SCM URLs
             for element in [connection, dev_connection, scm_url]:
                 if element is not None and element.text:
                     url_text = element.text.strip()
-                    
+
                     # Handle SCM-format URLs (scm:git:https://github.com/...)
                     scm_match = re.search(SCM_GIT_REGEX, url_text)
                     if scm_match:
@@ -136,7 +134,7 @@ def find_github_candidates_from_pom(pom_path) -> Tuple[set[str], Optional[str]]:
                             github_urls.add(_ensure_proper_url(url_text))
                             if best_candidate is None:
                                 best_candidate = url_text
-        
+
         # Also look for GitHub URLs in other common places
         url_element = root.find(".//mvn:url", ns) if ns else root.find(".//url")
         if url_element is not None and url_element.text:
@@ -145,12 +143,12 @@ def find_github_candidates_from_pom(pom_path) -> Tuple[set[str], Optional[str]]:
                 github_urls.add(_ensure_proper_url(url_text))
                 if best_candidate is None:
                     best_candidate = url_text
-                    
+
     except ET.ParseError as e:
         log.warning(f"Failed to parse POM: {pom_path}, error: {e}")
     except Exception as e:
         log.warning(f"Unexpected error parsing POM: {e}")
-    
+
     return github_urls, best_candidate
 
 
@@ -170,7 +168,7 @@ def exclude_result(file_name, repo_root, pkg_root):
     for extension in EXCLUDED_EXTENSIONS:
         if file_name.endswith(extension):
             return True
-    
+
     for pattern in EXCLUDED_PATTERNS:
         if pattern.startswith("*") and file_name.endswith(pattern[1:]):
             return True
@@ -185,21 +183,21 @@ def exclude_result(file_name, repo_root, pkg_root):
             # Parse both POM files and compare their canonical form
             repo_tree = ET.parse(os.path.join(repo_root, file_name))
             pkg_tree = ET.parse(os.path.join(pkg_root, file_name))
-            
+
             # Simple comparison - could be made more sophisticated
             repo_str = ET.tostring(repo_tree.getroot(), encoding='unicode')
             pkg_str = ET.tostring(pkg_tree.getroot(), encoding='unicode')
-            
+
             # Normalize whitespace for comparison
             repo_normalized = ' '.join(repo_str.split())
             pkg_normalized = ' '.join(pkg_str.split())
-            
+
             if repo_normalized == pkg_normalized:
                 return True
         except Exception:
             # If parsing fails, continue with hash comparison
             pass
-    
+
     return False
 
 
@@ -207,37 +205,37 @@ def find_mismatch_for_tag(repo, tag, base_path, repo_path):
     """Find mismatched files between repository tag and package"""
     repo.checkout(tag)
     mismatch = []
-    
+
     for root, dirs, files in os.walk(base_path):
         relative_path = os.path.relpath(root, base_path)
         repo_root = os.path.join(repo_path, relative_path)
-        
+
         if not os.path.exists(repo_root):
             continue
-        
+
         repo_files = list(filter(
             lambda x: os.path.isfile(os.path.join(repo_root, x)),
             os.listdir(repo_root)
         ))
-        
+
         for file_name in repo_files:
             if file_name not in files:  # ignore files we don't have in the distribution
                 continue
-            
+
             repo_hash, repo_content = get_file_hash(os.path.join(repo_root, file_name))
             pkg_hash, pkg_content = get_file_hash(os.path.join(root, file_name))
-            
+
             if repo_hash != pkg_hash:
                 if exclude_result(file_name, repo_root, root):
                     continue
-                
+
                 res = {
                     "file": os.path.join(relative_path, file_name),
                     "repo_sha256": repo_hash,
                     "pkg_sha256": pkg_hash
                 }
                 mismatch.append(res)
-    
+
     return mismatch
 
 
@@ -258,14 +256,14 @@ def find_suitable_tags(repo, version):
         match = tags_regex.match(ref)
         if match is not None:
             tags.append(match.group(1))
-    
+
     return find_suitable_tags_in_list(tags, version)
 
 
 class MavenIntegrityMismatchDetector(IntegrityMismatch):
     """
-    This heuristic compares source code available on the Maven package source code repository (e.g. GitHub), 
-    and source code published on Maven Central. If a file is on both sides but has a different content, 
+    This heuristic compares source code available on the Maven package source code repository (e.g. GitHub),
+    and source code published on Maven Central. If a file is on both sides but has a different content,
     this heuristic will flag the package.
 
     This helps identify packages whose release artifacts were modified directly on Maven Central.
