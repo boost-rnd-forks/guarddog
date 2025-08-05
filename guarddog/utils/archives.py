@@ -95,7 +95,7 @@ def extract_and_decompile_jar(jar_path: str, output_dir: str):
     """
     Decompress the jar file into output_dir/decompressed
     Decompile the java bytecode in output_dir/decompiled
-    Moves the pom.xml if present to output_dir/decompiled/pom.xml
+    Moves the pom.xml if present to output_dir/pom.xml
     """
     if not os.path.isfile(jar_path) or not jar_path.endswith(".jar"):
         raise ValueError(f"Invalid jar file provided at {jar_path}")
