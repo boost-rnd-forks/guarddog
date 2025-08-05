@@ -9,6 +9,7 @@ from typing import Optional
 from guarddog.analyzer.metadata.potentially_compromised_email_domain import (
     PotentiallyCompromisedEmailDomainDetector,
 )
+from .utils import get_email_addresses
 
 
 class MavenPotentiallyCompromisedEmailDomainDetector(
@@ -17,8 +18,8 @@ class MavenPotentiallyCompromisedEmailDomainDetector(
     def __init__(self):
         super().__init__("maven")
 
-    def get_email_addresses(self, package_info: dict):
-        return package_info["info"]["email"]
+    def get_email_addresses(self, package_info: dict) -> set[str]:
+        return get_email_addresses(package_info)
 
     def get_project_latest_release_date(self, package_info) -> Optional[datetime]:
         """
