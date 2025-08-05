@@ -135,8 +135,8 @@ def extract_and_decompile_jar(jar_path: str, output_dir: str):
     if not pom_path:
         log.error(f"No pom.xml found in the project {jar_path}")
     else:
-        log.debug("Successfully found the pom.xml.")
-        shutil.move(pom_path, decompiled_path)
+        log.debug("Successfully found the pom.xml in the archive.")
+        shutil.move(pom_path, output_dir)
 
 
 def find_pom(decompressed_path: str) -> str:
