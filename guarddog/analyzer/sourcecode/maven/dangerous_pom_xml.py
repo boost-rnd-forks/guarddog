@@ -361,4 +361,5 @@ class MavenDangerousPomXML(Detector):
                 suspicious = True
                 suspicious_commands.append(cmd)
                 log.debug("Suspicious command in <argLine> (curl, wget, sh...)")
+        suspicious_commands = list(set(suspicious_commands))
         return suspicious, suspicious_commands
