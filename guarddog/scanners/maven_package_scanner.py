@@ -4,6 +4,7 @@ import subprocess
 import typing
 import xml.etree.ElementTree as ET
 import requests
+import re
 import filecmp
 import zipfile
 import shutil
@@ -63,7 +64,9 @@ class MavenPackageScanner(PackageScanner):
             else:
                 version, release_date = latest_version_info
                 log.debug("No version specified")
-                log.debug(f"-->Using latest version {version} of {package_name} released on {release_date}.")
+                log.debug(
+                    f"-->Using latest version {version} of {package_name} released on {release_date}."
+                )
 
         if not directory:
             directory = artifact_id
@@ -259,8 +262,12 @@ class MavenPackageScanner(PackageScanner):
                     latest_version = docs[0].get("latestVersion")
                     timestamp = docs[0].get("timestamp")
                     if latest_version and timestamp:
-                        release_date = datetime.fromtimestamp(timestamp / 1000, timezone.utc)
-                        log.debug(f"Latest release date of {artifact_id}: {release_date}")
+                        release_date = datetime.fromtimestamp(
+                            timestamp / 1000, timezone.utc
+                        )
+                        log.debug(
+                            f"Latest release date of {artifact_id}: {release_date}"
+                        )
                         return latest_version, release_date
         except requests.exceptions.ConnectionError:
             log.error("Failed to connect to Maven repository.")
@@ -312,6 +319,16 @@ class MavenPackageScanner(PackageScanner):
         except subprocess.CalledProcessError as e:
             log.error(f"Error running CFR: {e}")
 
+    def normalize_email(self, email: str) -> str:
+        """
+        Normalize emails "name ([at]) domain.com"
+        into emails "name@domain.com"
+        """
+        email_with_at = re.sub(
+            r"\s*(\(|\[)?\s*at\s*(\)|\])?\s*", "@", email, flags=re.IGNORECASE
+        )
+        return email_with_at.strip()
+
     def get_package_info(
         self,
         pom_path: str,
@@ -346,11 +363,11 @@ class MavenPackageScanner(PackageScanner):
             if "}" in root.tag:
                 namespace = root.tag.split("}")[0].strip("{")
             ns = {"mvn": namespace} if namespace else {}
-
             for dev in root.findall(".//mvn:developer", ns):
                 email = dev.find("mvn:email", ns)
                 if email is not None and email.text:
-                    emails.append(email.text.strip())
+                    normalized_email: str = self.normalize_email(email.text.strip())
+                    emails.append(normalized_email)
             if not emails:
                 log.debug("No email found in the pom.")
 
