@@ -11,3 +11,4 @@ def get_email_addresses(package_info: dict) -> set[str]:
     if not isinstance(emails, (list, tuple, set)):
         return set()
     return set(emails)
+  
