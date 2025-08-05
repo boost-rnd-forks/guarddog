@@ -273,9 +273,9 @@ class MavenDangerousPomXML(Detector):
             artifact_id = plugin.find("mvn:artifactId", NAMESPACE)
             plugin_id = self.get_text(artifact_id) or "(unknown-plugin)"
 
-            early_phases = []
-            tags_found = []
             for execution in plugin.findall(".//mvn:execution", NAMESPACE):
+                early_phases = []
+                tags_found = []
                 phase = False
                 has_susp_tag = False
                 #  <execution> blocks bound to early phase
