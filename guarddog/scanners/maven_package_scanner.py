@@ -55,15 +55,15 @@ class MavenPackageScanner(PackageScanner):
                 f"Invalid package format: '{package_name}'. Expected 'groupId:artifactId'"
             )
         if version is None:
-            latest_version, _ = self.get_latest_maven_version(group_id, artifact_id)
-            if latest_version is None:
+            latest_version_info = self.get_latest_maven_version(group_id, artifact_id)
+            if latest_version_info is None:
                 raise ValueError(
                     "Version must be specified for Maven packages. Could not find latest version"
                 )
             else:
-                version = latest_version
+                version, release_date = latest_version_info
                 log.debug("No version specified")
-                log.debug(f"-->Using version {version} of {package_name}")
+                log.debug(f"-->Using latest version {version} of {package_name} released on {release_date}.")
 
         if not directory:
             directory = artifact_id
@@ -260,6 +260,7 @@ class MavenPackageScanner(PackageScanner):
                     timestamp = docs[0].get("timestamp")
                     if latest_version and timestamp:
                         release_date = datetime.fromtimestamp(timestamp / 1000, timezone.utc)
+                        log.debug(f"Latest release date of {artifact_id}: {release_date}")
                         return latest_version, release_date
         except requests.exceptions.ConnectionError:
             log.error("Failed to connect to Maven repository.")
@@ -267,7 +268,7 @@ class MavenPackageScanner(PackageScanner):
             log.error("Request to Maven repository timed out.")
         except requests.exceptions.RequestException as e:
             log.error(f"An error occurred while fetching Maven data: {e}")
-
+        log.debug(f"No latest release found for {artifact_id}")
         return None, None
 
     def is_safe_path(self, path: str) -> bool:
@@ -358,11 +359,18 @@ class MavenPackageScanner(PackageScanner):
         except Exception as e:
             log.warning(f"Unexpected error parsing POM: {e}")
 
+        result = self.get_latest_maven_version(group_id, artifact_id)
+        if result is not None:
+            latest_release, date = result
+        else:
+            latest_release, date = "unknown", "unknown"
+
         return {
             "info": {
                 "groupid": group_id,
                 "artifactid": artifact_id,
                 "version": version,
+                "latest_version": (latest_release, date),
                 "email": emails,
             },
             "path": {
