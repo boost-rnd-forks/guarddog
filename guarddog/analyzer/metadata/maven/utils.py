@@ -6,18 +6,8 @@ def get_email_addresses(package_info: dict) -> set[str]:
     Returns:
         set[str]: Set of email addresses found in the metadata
     """
-    emails = set()
-
-    # Extract from developers
-    developers = package_info.get("developers", [])
-    for dev in developers:
-        if "email" in dev:
-            emails.add(dev["email"])
-
-    # Extract from contributors
-    contributors = package_info.get("contributors", [])
-    for contrib in contributors:
-        if "email" in contrib:
-            emails.add(contrib["email"])
-
-    return emails - {None, ""}
+    info = package_info.get("info", {})
+    emails = info.get("email", [])
+    if not isinstance(emails, (list, tuple, set)):
+        return set()
+    return set(emails)
