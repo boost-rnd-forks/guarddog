@@ -11,6 +11,8 @@ from ..utils.archives import find_pom
 
 log = logging.getLogger("guarddog")
 
+TMP_DEPENDENCIES_PATH = "/tmp/maven_depenencies.txt"
+
 
 class MavenDeoendenciesScanner(ProjectScanner):
     def __init__(self) -> None:
@@ -70,6 +72,7 @@ class MavenDeoendenciesScanner(ProjectScanner):
             versions.add(DependencyVersion(version=version, location=idx))
             dependency = Dependency(name=name, versions=versions)
             dependencies.append(dependency)
+        os.remove(TMP_DEPENDENCIES_PATH)
         return dependencies
 
     def find_requirements(self, directory: str) -> list[str]:
@@ -83,8 +86,9 @@ class MavenDeoendenciesScanner(ProjectScanner):
         log.debug("Generating the dependency tree...")
         if not os.path.isdir(directory):
             raise ValueError("The provided path must be a java project directory.")
-        output_file = os.path.join(directory, "dependencies.txt")
+
         resulting_path: list[str] = []
+
         if not os.path.isfile(os.path.join(directory, "pom.xml")):
             log.debug("looking for pom")
             pom_path: str = find_pom(directory)
@@ -94,7 +98,7 @@ class MavenDeoendenciesScanner(ProjectScanner):
                 raise DependencyGenerationError(f"No pom.xml found in {directory}.")
 
         try:
-            with open(output_file, "w") as f:
+            with open(TMP_DEPENDENCIES_PATH, "w") as f:
                 subprocess.run(
                     ["mvn", "dependency:tree"],
                     cwd=directory,
@@ -103,7 +107,7 @@ class MavenDeoendenciesScanner(ProjectScanner):
                     check=True,
                 )
 
-            resulting_path.append(output_file)
+            resulting_path.append(TMP_DEPENDENCIES_PATH)
             return resulting_path
 
         except Exception as e:
