@@ -2,10 +2,12 @@ import logging
 import os
 from typing import List
 import subprocess
+import shutil
 
 from guarddog.scanners.maven_package_scanner import MavenPackageScanner
 from guarddog.scanners.scanner import Dependency, ProjectScanner, DependencyVersion
 from ..utils.exceptions import DependencyGenerationError
+from ..utils.archives import find_pom
 
 log = logging.getLogger("guarddog")
 
@@ -83,6 +85,13 @@ class MavenDeoendenciesScanner(ProjectScanner):
             raise ValueError("The provided path must be a java project directory.")
         output_file = os.path.join(directory, "dependencies.txt")
         resulting_path: list[str] = []
+        if not os.path.isfile(os.path.join(directory, "pom.xml")):
+            log.debug("looking for pom")
+            pom_path: str = find_pom(directory)
+            if pom_path:
+                shutil.move(pom_path, directory)
+            else:
+                raise DependencyGenerationError(f"No pom.xml found in {directory}.")
 
         try:
             with open(output_file, "w") as f:
