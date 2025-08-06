@@ -5,6 +5,7 @@ import subprocess
 
 from guarddog.scanners.maven_package_scanner import MavenPackageScanner
 from guarddog.scanners.scanner import Dependency, ProjectScanner, DependencyVersion
+from ..utils.exceptions import DependencyGenerationError
 
 log = logging.getLogger("guarddog")
 
@@ -12,6 +13,34 @@ log = logging.getLogger("guarddog")
 class MavenDeoendenciesScanner(ProjectScanner):
     def __init__(self) -> None:
         super().__init__(MavenPackageScanner())
+
+    def format_requirements(self, raw_requirements: str) -> list[str]:
+        """
+        Parses the raw output of `mvn dependency:tree`
+        and extracts only the direct dependencies.
+
+        Args:
+            raw_requirements (str): output of `mvn dependency:tree`
+
+        Returns:
+            list[str]: direct dependencies cleaned (groupId:artifactId:type:version:scope)
+        """
+        direct_dependencies: list[str] = []
+        for line in raw_requirements.splitlines():
+            # line = line.strip()
+            if not line.startswith("[INFO]"):
+                continue
+
+            content = line[len("[INFO]") :].lstrip()
+
+            # Capture only direct dependencies
+            if content.startswith("+-"):
+                direct_dependencies.append(content.strip()[2:].lstrip())
+            elif content.startswith("\\-"):  # last direct dependency
+                direct_dependencies.append(content.strip()[2:].lstrip())
+                break  # stop when nested level starts
+
+        return direct_dependencies
 
     def parse_requirements(self, raw_requirements: str) -> List[Dependency]:
         """
@@ -23,18 +52,22 @@ class MavenDeoendenciesScanner(ProjectScanner):
                 - name (str): group_id:artifact_id
                 - version (str)
         """
-        log.debug("Parsing requirements generated...")
+        log.debug("Parsing requirements generated ...")
         dependencies: List[Dependency] = []
         idx = 0
-        for line in raw_requirements.splitlines():
+        formatted_dep: list[str] = self.format_requirements(raw_requirements)
+        for dep in formatted_dep:
+            log.debug(dep)
             idx += 1
-            group_id, artifact_id, type, version, phase = line.split(":")
+            try:
+                group_id, artifact_id, type, version, phase = dep.split(":")
+            except Exception as e:
+                raise ValueError(f"Invalid maven dependency value: {e}.")
             name = group_id + ":" + artifact_id
             versions: set[DependencyVersion] = set()
             versions.add(DependencyVersion(version=version, location=idx))
-            dep = Dependency(name=name, versions=versions)
-            dependencies.append(dep)
-
+            dependency = Dependency(name=name, versions=versions)
+            dependencies.append(dependency)
         return dependencies
 
     def find_requirements(self, directory: str) -> list[str]:
@@ -43,54 +76,26 @@ class MavenDeoendenciesScanner(ProjectScanner):
         Args:
             directory (str): Path to the root directory of the Maven project
         Returns:
-            List[str]: Path to the written file containing the list of direct dependencies
+            List[str]: Path to the written file containing the output of the cmd
         """
         log.debug("Generating the dependency tree...")
         if not os.path.isdir(directory):
             raise ValueError("The provided path must be a java project directory.")
         output_file = os.path.join(directory, "dependencies.txt")
         resulting_path: list[str] = []
+
         try:
-            # Run `mvn dependency:tree` for direct dependencies
-            result = subprocess.run(
-                ["mvn", "dependency:tree", "-DoutputType=text"],
-                cwd=directory,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-            output = result.stdout
-            lines = output.splitlines()
-
-            direct_dependencies = []
-            inside_main_module = False
-
-            for line in lines:
-                # do not analyze non relevant lines
-                if line.strip().startswith("[INFO] --- dependency:"):
-                    inside_main_module = True
-                    continue
-                if not inside_main_module or not line.strip().startswith("[INFO]"):
-                    continue
-
-                content = line.strip()[len("[INFO]") :].lstrip()
-
-                # Capture only direct dependencies
-                if content.startswith("+-") or content.startswith("\\-"):
-                    direct_dependencies.append(content.strip()[2:].lstrip())
-                elif content.startswith("|"):
-                    break  # stop when nested level starts
-
-            # Write dependencies to file
             with open(output_file, "w") as f:
-                for dep in direct_dependencies:
-                    f.write(dep + "\n")
+                subprocess.run(
+                    ["mvn", "dependency:tree"],
+                    cwd=directory,
+                    stdout=f,
+                    stderr=subprocess.STDOUT,  # optional: capture stderr too
+                    check=True,
+                )
 
             resulting_path.append(output_file)
             return resulting_path
 
-        except subprocess.CalledProcessError as e:
-            print("Failed to run mvn dependency:tree")
-            print("Error:", e.stderr)
-            return []
+        except Exception as e:
+            raise DependencyGenerationError(f"Failed to run mvn dependency:tree: {e}")
