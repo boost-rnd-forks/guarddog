@@ -1,5 +1,6 @@
 # Maven-specific metadata security rules
 from guarddog.analyzer.metadata.detector import Detector
+from guarddog.analyzer.metadata.maven.empty_information import MavenEmptyInfoDetector
 from guarddog.analyzer.metadata.maven.potentially_compromised_email_domain import (
     MavenPotentiallyCompromisedEmailDomainDetector,
 )
@@ -13,6 +14,7 @@ from guarddog.analyzer.metadata.maven.unclaimed_maintainer_email_domain import (
 MAVEN_METADATA_RULES: dict[str, Detector] = {}
 
 classes = [
+    MavenEmptyInfoDetector,
     MavenPotentiallyCompromisedEmailDomainDetector,
     MavenBundledBinary,
     MavenDeceptiveAuthor,
