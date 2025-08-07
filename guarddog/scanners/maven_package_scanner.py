@@ -73,18 +73,15 @@ class MavenPackageScanner(PackageScanner):
         # decompress jar
         decompressed_path: str = ""
         if jar_path.endswith(".jar"):
-            log.debug(f"Extracting {jar_path} into {directory}...")
             decompressed_path = os.path.join(directory, "decompressed")
             extract_jar(jar_path, decompressed_path)
         else:
-            log.debug(f"Could not extract {jar_path}")
-        if (
+            log.error(f"Invalid JAR archive {jar_path}.")
+        if not (
             os.path.exists(decompressed_path)
             and os.path.isdir(decompressed_path)
             and len(os.listdir(decompressed_path)) > 0
         ):
-            log.debug(f"Successfully extracted jar in {decompressed_path}.")
-        else:
             log.error(f"The project could not be extracted from {jar_path}")
 
         # decompile jar
@@ -98,11 +95,14 @@ class MavenPackageScanner(PackageScanner):
         if jar_pom:
             same, pom_jar_path = jar_pom
             if same:
-                log.debug("Same pom.xml in Maven and decompressed project!")
+                log.debug(
+                    "The poms retrieved from Maven and from the decompressed project are the same!"
+                )
             else:
-                log.warning("The 2 found pom.xml for the project differ.")
-                log.warning(f"\t -pom retrieved from Maven: {pom_path}")
-                log.warning(f"\t -pom found in decompressed package: {pom_jar_path}")
+                log.warning(
+                    "The 2 found pom.xml for the project differ."
+                    f"Using the pom found in the decompressed project: {pom_jar_path}"
+                )
                 pom_path = pom_jar_path
         # move pom file in decompiled project for source code analysis
         shutil.move(pom_path, decompiled_path)
@@ -112,7 +112,7 @@ class MavenPackageScanner(PackageScanner):
         package_info: dict = self.get_package_info(
             pom_path, decompressed_path, decompiled_path, group_id, artifact_id, version
         )
-        log.debug(f"Package info: {package_info}")
+        log.debug(f"Package info: \n---\n{package_info}\n---")
         return package_info, decompiled_path
 
     def download_package(
@@ -177,10 +177,10 @@ class MavenPackageScanner(PackageScanner):
         if not os.path.isdir(pom_dir):
             log.warning(f"Directory {pom_dir} does not exist. Cannot look for pom.xml.")
             return None
-        log.debug(f"Looking for pom.xml in {os.listdir(pom_dir)}")
+        log.debug("Looking for pom.xml in the project...")
         pom_path = os.path.join(pom_dir, "pom.xml")
         if os.path.isfile(pom_path):
-            log.debug(f"Found pom.xml in decompressed project: {pom_path}")
+            log.debug("Found pom.xml in the decompressed project!")
             return pom_path
         else:
             log.warning(f"No pom.xml found at {pom_path}")
@@ -239,7 +239,7 @@ class MavenPackageScanner(PackageScanner):
                             timestamp / 1000, timezone.utc
                         )
                         log.debug(
-                            f"Latest release date of {artifact_id}: {release_date}"
+                            f"Latest release date of {group_id}:{artifact_id}: {release_date}"
                         )
                         return latest_version, release_date
         except requests.exceptions.ConnectionError:
@@ -248,7 +248,7 @@ class MavenPackageScanner(PackageScanner):
             log.error("Request to Maven repository timed out.")
         except requests.exceptions.RequestException as e:
             log.error(f"An error occurred while fetching Maven data: {e}")
-        log.debug(f"No latest release found for {artifact_id}")
+        log.error(f"No latest release found for {group_id}:{artifact_id}.")
         return None, None
 
     def normalize_email(self, email: str) -> str:
@@ -284,9 +284,9 @@ class MavenPackageScanner(PackageScanner):
         """
         emails = []
         description = ""
-        log.debug(f"Parsing pom {pom_path}")
+        log.debug("Parsing pom...")
         if not os.path.isfile(pom_path):
-            log.warning(f"WARNING: {pom_path} does not exist.")
+            log.error(f"WARNING: {pom_path} does not exist.")
         try:
             tree = ET.parse(pom_path)
             root = tree.getroot()
@@ -304,21 +304,21 @@ class MavenPackageScanner(PackageScanner):
                     normalized_email: str = self.normalize_email(email.text.strip())
                     emails.append(normalized_email)
             if not emails:
-                log.debug("No email found in the pom.")
+                log.warning("No email found in the pom.")
 
             # find description
             # Find <description> element
             description_elem = root.find("mvn:description", ns)
             if description_elem is not None and description_elem.text:
                 description = description_elem.text.strip()
-                log.debug(f"<description> in pom: {description}")
+                log.debug(f"<description> in pom: \n---\n{description}\n---")
             else:
-                log.debug("No description found in pom")
+                log.warning("No description found in pom")
 
         except ET.ParseError as e:
-            log.warning(f"Failed to parse POM: {pom_path}, error: {e}")
+            log.error(f"Failed to parse POM: {pom_path}, error: {e}")
         except Exception as e:
-            log.warning(f"Unexpected error parsing POM: {e}")
+            log.error(f"Unexpected error parsing POM: {e}")
 
         result = self.get_latest_maven_version(group_id, artifact_id)
         if result is not None:

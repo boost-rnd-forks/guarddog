@@ -112,9 +112,9 @@ def extract_and_decompile_jar(jar_path: str, output_dir: str):
         and os.path.isdir(decompressed_path)
         and len(os.listdir(decompressed_path)) > 0
     ):
-        log.debug(f"Successfully extracted jar in {decompressed_path}.")
+        log.debug("Successfully extracted JAR archive.")
     else:
-        log.error(f"The project could not be extracted from {jar_path}")
+        log.error(f"The project could not be extracted from {jar_path}.")
 
     # decompile jar file
     decompiled_path: str = os.path.join(output_dir, "decompiled")
@@ -122,22 +122,20 @@ def extract_and_decompile_jar(jar_path: str, output_dir: str):
         decompile_jar(jar_path, decompiled_path)
     except Exception:
         log.exception(f"Exception occurred while decompiling the jar at {jar_path}")
-        raise DecompilationError(
-            f"The .jar file at {jar_path} could not be decompiled."
-        )
+        raise DecompilationError(f"The JAR file at {jar_path} could not be decompiled.")
     if (
         os.path.exists(decompiled_path)
         and os.path.isdir(decompiled_path)
         and len(os.listdir(decompiled_path)) > 0
     ):
-        log.debug(f"Successfully decompiled the jar in {decompiled_path}.")
+        log.debug("Successfully decompiled the JAR.")
 
     # find the pom.xml and place it in decompiled/
     pom_path: str = find_pom(decompressed_path)
     if not pom_path:
         log.error(f"No pom.xml found in the project {jar_path}")
     else:
-        log.debug("Successfully found the pom.xml in the archive.")
+        log.debug("Successfully found the pom.xml in the JAR archive!")
         shutil.move(pom_path, output_dir)
 
 
@@ -160,7 +158,7 @@ def extract_jar(jar_path: str, output_dir: str):
     - `output_dir` (str): directory to decompress the jar to
     """
     with zipfile.ZipFile(jar_path, "r") as jar:
-        log.debug("Extracting jar package...")
+        log.debug("Extracting JAR package...")
         output_dir_abs = os.path.abspath(output_dir)
         for file in jar.namelist():
             # resolve paths and removes ../
@@ -175,7 +173,7 @@ def extract_jar(jar_path: str, output_dir: str):
             os.makedirs(os.path.dirname(safe_path), exist_ok=True)
             with open(safe_path, "wb") as f:
                 f.write(jar.read(file))
-    log.debug(f"extracted to {output_dir}")
+    log.debug("JAR file successfully extracted!")
 
 
 def is_safe_path(path: str) -> bool:
@@ -198,9 +196,9 @@ def decompile_jar(jar_path: str, dest_path: str):
     if not is_jar_file(jar_path):
         raise ValueError(f"Invalid JAR path: {jar_path}")
     if not os.path.isfile(CFR_JAR_PATH):
-        raise FileNotFoundError(f"CFR jar file not found: {CFR_JAR_PATH}")
+        raise FileNotFoundError(f"CFR jar file not found at {CFR_JAR_PATH}")
     if not is_safe_path(dest_path):
-        raise ValueError(f"Invalid destination path: {dest_path}")
+        raise ValueError(f"Invalid destination path for decompilation: {dest_path}")
     os.makedirs(dest_path, exist_ok=True)
 
     command = [
@@ -215,6 +213,6 @@ def decompile_jar(jar_path: str, dest_path: str):
     ]
     try:
         subprocess.run(command, check=True)
-        log.debug(f"Decompiled JAR written to: {os.path.abspath(dest_path)}")
+        log.debug("Successfully decompiled the JAR with CFR decompiler.")
     except subprocess.CalledProcessError as e:
         log.error(f"Error running CFR: {e}")
