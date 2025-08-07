@@ -61,8 +61,6 @@ class MavenDangerousPomXML(Detector):
         """
         Detects dangerous behaviours defined in the effective pom.xml of the java project in path
         """
-        log.debug(f"Scanning for dangerous pom.xml in sourcecode: {path} ")
-        log.debug(f"is path ok? {os.listdir(path)} ")
         if path is None:
             raise ValueError("path is needed to run heuristic " + self.get_name())
         message: str = ""
@@ -70,9 +68,11 @@ class MavenDangerousPomXML(Detector):
         if not os.path.isdir(path):
             log.error(f"Error: '{path}' is not a directory - no pom.xml analysis.")
             return False, None
-        effective_pom_path: str = self.get_effective_pom(path)
-        if not effective_pom_path:
-            log.debug("Error with generating the effective pom path")
+        try:
+            effective_pom_path: str = self.get_effective_pom(path)
+        except Exception as e:
+            effective_pom_path = ""
+            log.error(f"Error with generating the effective pom path: {e}")
             return False, None
         message += "\nResults of the effective pom analysis.\n"
         http_unsafe, http_urls = self.http_unsafe(effective_pom_path)
@@ -104,8 +104,12 @@ class MavenDangerousPomXML(Detector):
             for entry in entries:
                 phase = entry.get("phase", [])
                 tag = entry.get("tag", [])
-                message += f"\n\t* Suspicious tags combination found in plugin {plugin}: \n"
-                message += f"\t\tFound in <execution> : {tag} bound with early phase {phase}\n"
+                message += (
+                    f"\n\t* Suspicious tags combination found in plugin {plugin}: \n"
+                )
+                message += (
+                    f"\t\tFound in <execution> : {tag} bound with early phase {phase}\n"
+                )
                 result = True
 
         urls_in_cmd: bool = self.url_as_cmd_argument(effective_pom_path)
@@ -130,16 +134,14 @@ class MavenDangerousPomXML(Detector):
         The pom.xml is supposed to be in the root directory: {path}/pom.xml
         Stores the resulting effective xml in OUTPUT_FILE
         """
-        log.debug("Generating the effective pom")
-        log.debug(os.listdir(path))
-        if not os.path.isdir(path) and os.path.abspath(path).startswith(os.getcwd()):
+        log.debug("Generating the effective pom...")
+        if not os.path.isdir(path):
             raise ValueError(f"Invalid path provided: {path}")
 
         pom_path = os.path.join(path, "pom.xml")
 
         if not os.path.isfile(pom_path):
             raise FileNotFoundError(f"Error: No 'pom.xml' found in '{path}'.")
-        log.debug(f"pom.xml found at {path}/ ")
 
         command = ["mvn", "help:effective-pom", f"-Doutput={OUTPUT_FILE}"]
         effective_pom_path = os.path.join(path, OUTPUT_FILE)
@@ -151,7 +153,7 @@ class MavenDangerousPomXML(Detector):
             )
             if os.path.exists(effective_pom_path):
                 log.debug(
-                    f"Effective POM generated at: {os.path.abspath(effective_pom_path)}\n"
+                    f"Effective POM generated at: {os.path.abspath(effective_pom_path)}"
                 )
             else:
                 log.debug("Failed to generate the effective pom")
@@ -177,7 +179,7 @@ class MavenDangerousPomXML(Detector):
         tree = ET.parse(pom_path)
         root = tree.getroot()
         bad_urls = []
-        log.debug("\nScanning for insecure HTTP URLs...\n")
+        log.debug("Scanning for insecure HTTP URLs...")
         found = False
         for path in URL_PATHS:
             for elem in root.findall(path, NAMESPACE):
@@ -199,7 +201,7 @@ class MavenDangerousPomXML(Detector):
         """
         tree = ET.parse(pom_path)
         root = tree.getroot()
-        log.debug("Scanning for untrusted plugins downloads...\n")
+        log.debug("Scanning for untrusted plugins downloads...")
         found = False
         bad_urls = []
         download_urls = [".//mvn:repository/mvn:url", ".//mvn:pluginRepository/mvn:url"]
@@ -225,7 +227,7 @@ class MavenDangerousPomXML(Detector):
         """
         tree = ET.parse(pom_path)
         root = tree.getroot()
-        log.debug("Scanning for dangerous plugins ...\n")
+        log.debug("Scanning for dangerous plugins ...")
         results = []
         suspicious_plugin_found = False
         # detect dangerous plugins
@@ -268,7 +270,7 @@ class MavenDangerousPomXML(Detector):
         tree = ET.parse(pom_path)
         root = tree.getroot()
         results: dict = {}
-        log.debug("\nScanning for dangerous tags ...\n")
+        log.debug("Scanning for dangerous tags ...")
         for plugin in root.findall(".//mvn:plugin", NAMESPACE):
             artifact_id = plugin.find("mvn:artifactId", NAMESPACE)
             plugin_id = self.get_text(artifact_id) or "(unknown-plugin)"
@@ -313,7 +315,7 @@ class MavenDangerousPomXML(Detector):
         root = tree.getroot()
         found = False
         urls = ["http://", "https://", "ftp://"]
-        log.debug("\nScanning for urls as cmd args ...\n")
+        log.debug("Scanning for urls as cmd args ...")
         argument = root.findall(".//mvn:argument", NAMESPACE)
         script = root.findall(".//mvn:script", NAMESPACE)
         for elem in argument + script:
@@ -341,7 +343,7 @@ class MavenDangerousPomXML(Detector):
         root = tree.getroot()
         suspicious = False
         suspicious_commands = []
-        log.debug("\nScanning for <argLine> commands ...\n")
+        log.debug("Scanning for <argLine> commands...")
         argLine = root.findall(".//mvn:argLine", NAMESPACE)
         for elem in argLine:
             cmd = self.get_text(elem)
