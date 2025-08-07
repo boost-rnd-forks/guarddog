@@ -105,7 +105,8 @@ def extract_and_decompile_jar(jar_path: str, output_dir: str):
     try:
         extract_jar(jar_path, decompressed_path)
     except Exception as e:
-        raise ExtractionError(f"The jar file at {jar_path} could not be extracted: {e}")
+        log.error(f"Failed to extract jar file at {jar_path}: {e}")
+        raise ExtractionError(f"The jar file at {jar_path} could not be extracted.")
     if (
         os.path.exists(decompressed_path)
         and os.path.isdir(decompressed_path)
@@ -119,9 +120,10 @@ def extract_and_decompile_jar(jar_path: str, output_dir: str):
     decompiled_path: str = os.path.join(output_dir, "decompiled")
     try:
         decompile_jar(jar_path, decompiled_path)
-    except Exception as e:
+    except Exception:
+        log.exception(f"Exception occurred while decompiling the jar at {jar_path}")
         raise DecompilationError(
-            f"The .jar file at {jar_path} could not be decompiled: {e}"
+            f"The .jar file at {jar_path} could not be decompiled."
         )
     if (
         os.path.exists(decompiled_path)
