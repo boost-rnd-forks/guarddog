@@ -4,9 +4,11 @@ import subprocess
 import typing
 import xml.etree.ElementTree as ET
 import requests
+import re
 import filecmp
 import zipfile
 import shutil
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from guarddog.analyzer.analyzer import Analyzer
@@ -47,14 +49,25 @@ class MavenPackageScanner(PackageScanner):
                     - decompiled/decompiled_java_files
             * path to the decompiled sourcecode
         """
-        if version is None:
-            raise ValueError("Version must be specified for Maven packages")
         try:
             group_id, artifact_id = package_name.split(":")
         except ValueError:
             raise Exception(
                 f"Invalid package format: '{package_name}'. Expected 'groupId:artifactId'"
             )
+        if version is None:
+            latest_version_info = self.get_latest_maven_version(group_id, artifact_id)
+            if latest_version_info is None:
+                raise ValueError(
+                    "Version must be specified for Maven packages. Could not find latest version"
+                )
+            else:
+                version, release_date = latest_version_info
+                log.debug("No version specified")
+                log.debug(
+                    f"-->Using latest version {version} of {package_name} released on {release_date}."
+                )
+
         if not directory:
             directory = artifact_id
 
@@ -226,6 +239,45 @@ class MavenPackageScanner(PackageScanner):
         else:
             return None
 
+    def get_latest_maven_version(self, group_id: str, artifact_id: str):
+        """
+        Fetches the latest release of the project and the release date
+        from https://search.maven.org/solrsearch/select
+        Returns
+            - latest-version: str
+            - release-date: datetime
+        """
+        url = "https://search.maven.org/solrsearch/select"
+        params = {
+            "q": f'g:"{group_id}" AND a:"{artifact_id}"',
+            "rows": "1",
+            "wt": "json",
+        }
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                docs = data.get("response", {}).get("docs", [])
+                if docs:
+                    latest_version = docs[0].get("latestVersion")
+                    timestamp = docs[0].get("timestamp")
+                    if latest_version and timestamp:
+                        release_date = datetime.fromtimestamp(
+                            timestamp / 1000, timezone.utc
+                        )
+                        log.debug(
+                            f"Latest release date of {artifact_id}: {release_date}"
+                        )
+                        return latest_version, release_date
+        except requests.exceptions.ConnectionError:
+            log.error("Failed to connect to Maven repository.")
+        except requests.exceptions.Timeout:
+            log.error("Request to Maven repository timed out.")
+        except requests.exceptions.RequestException as e:
+            log.error(f"An error occurred while fetching Maven data: {e}")
+        log.debug(f"No latest release found for {artifact_id}")
+        return None, None
+
     def is_safe_path(self, path: str) -> bool:
         """Basic path safety check to avoid traversal or injection."""
         return os.path.isabs(path) or not (".." in path or path.startswith(("/", "\\")))
@@ -267,6 +319,16 @@ class MavenPackageScanner(PackageScanner):
         except subprocess.CalledProcessError as e:
             log.error(f"Error running CFR: {e}")
 
+    def normalize_email(self, email: str) -> str:
+        """
+        Normalize emails "name ([at]) domain.com"
+        into emails "name@domain.com"
+        """
+        email_with_at = re.sub(
+            r"\s*(\(|\[)?\s*at\s*(\)|\])?\s*", "@", email, flags=re.IGNORECASE
+        )
+        return email_with_at.strip()
+
     def get_package_info(
         self,
         pom_path: str,
@@ -307,7 +369,8 @@ class MavenPackageScanner(PackageScanner):
             for dev in root.findall(".//mvn:developer", ns):
                 email = dev.find("mvn:email", ns)
                 if email is not None and email.text:
-                    emails.append(email.text.strip())
+                    normalized_email: str = self.normalize_email(email.text.strip())
+                    emails.append(normalized_email)
             if not emails:
                 log.debug("No email found in the pom.")
 
@@ -324,11 +387,19 @@ class MavenPackageScanner(PackageScanner):
             log.warning(f"Failed to parse POM: {pom_path}, error: {e}")
         except Exception as e:
             log.warning(f"Unexpected error parsing POM: {e}")
+
+        result = self.get_latest_maven_version(group_id, artifact_id)
+        if result is not None:
+            latest_release, date = result
+        else:
+            latest_release, date = "unknown", "unknown"
+
         return {
             "info": {
                 "groupid": group_id,
                 "artifactid": artifact_id,
                 "version": version,
+                "latest_version": (latest_release, date),
                 "email": emails,
                 "description": description,
             },
