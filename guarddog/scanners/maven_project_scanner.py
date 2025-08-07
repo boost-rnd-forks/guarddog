@@ -11,10 +11,10 @@ from ..utils.archives import find_pom
 
 log = logging.getLogger("guarddog")
 
-TMP_DEPENDENCIES_PATH = "/tmp/maven_depenencies.txt"
+TMP_DEPENDENCIES_PATH = "/tmp/maven_dependencies.txt"
 
 
-class MavenDeoendenciesScanner(ProjectScanner):
+class MavenDependenciesScanner(ProjectScanner):
     def __init__(self) -> None:
         super().__init__(MavenPackageScanner())
 
@@ -59,20 +59,23 @@ class MavenDeoendenciesScanner(ProjectScanner):
         log.debug("Parsing requirements generated ...")
         dependencies: List[Dependency] = []
         idx = 0
-        formatted_dep: list[str] = self.format_requirements(raw_requirements)
-        for dep in formatted_dep:
-            log.debug(dep)
-            idx += 1
-            try:
-                group_id, artifact_id, type, version, phase = dep.split(":")
-            except Exception as e:
-                raise ValueError(f"Invalid maven dependency value: {e}.")
-            name = group_id + ":" + artifact_id
-            versions: set[DependencyVersion] = set()
-            versions.add(DependencyVersion(version=version, location=idx))
-            dependency = Dependency(name=name, versions=versions)
-            dependencies.append(dependency)
-        os.remove(TMP_DEPENDENCIES_PATH)
+        try:
+            formatted_dep: list[str] = self.format_requirements(raw_requirements)
+            for dep in formatted_dep:
+                log.debug(dep)
+                idx += 1
+                try:
+                    group_id, artifact_id, type, version, phase = dep.split(":")
+                except Exception as e:
+                    raise ValueError(f"Invalid maven dependency value: {e}.")
+                name = group_id + ":" + artifact_id
+                versions: set[DependencyVersion] = set()
+                versions.add(DependencyVersion(version=version, location=idx))
+                dependency = Dependency(name=name, versions=versions)
+                dependencies.append(dependency)
+        finally:
+            if os.path.exists(TMP_DEPENDENCIES_PATH):
+                os.remove(TMP_DEPENDENCIES_PATH)
         return dependencies
 
     def find_requirements(self, directory: str) -> list[str]:
@@ -93,11 +96,17 @@ class MavenDeoendenciesScanner(ProjectScanner):
             log.debug("looking for pom")
             pom_path: str = find_pom(directory)
             if pom_path:
-                shutil.move(pom_path, directory)
+                shutil.copy(pom_path, directory)
             else:
                 raise DependencyGenerationError(f"No pom.xml found in {directory}.")
 
         try:
+            log.warning(
+                "Security warning: Running 'mvn dependency:tree' in directory '%s'. "
+                "If this directory is untrusted, this may execute arbitrary code defined in the Maven project. "
+                "Proceed with caution.",
+                directory,
+            )
             with open(TMP_DEPENDENCIES_PATH, "w") as f:
                 subprocess.run(
                     ["mvn", "dependency:tree"],
