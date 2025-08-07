@@ -9,7 +9,7 @@ from .go_package_scanner import GoModuleScanner
 from .go_project_scanner import GoDependenciesScanner
 from .github_action_scanner import GithubActionScanner
 from .maven_package_scanner import MavenPackageScanner
-from .maven_project_scanner import MavenProjectScanner
+from .maven_project_scanner import MavenDependenciesScanner
 from .scanner import PackageScanner, ProjectScanner
 from ..ecosystems import ECOSYSTEM
 
@@ -62,5 +62,5 @@ def get_project_scanner(ecosystem: ECOSYSTEM) -> Optional[ProjectScanner]:
         case ECOSYSTEM.GITHUB_ACTION:
             return GitHubActionDependencyScanner()
         case ECOSYSTEM.MAVEN:
-            return MavenProjectScanner()
+            return MavenDependenciesScanner()
     return None
