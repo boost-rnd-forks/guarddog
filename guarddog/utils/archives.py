@@ -90,6 +90,7 @@ def safe_extract(source_archive: str, target_directory: str) -> None:
     else:
         raise ValueError(f"unsupported archive extension: {source_archive}")
 
+
 def extract_and_decompile_jar(jar_path: str, output_dir: str):
     """
     Decompress the jar file into output_dir/decompressed
@@ -139,6 +140,7 @@ def extract_and_decompile_jar(jar_path: str, output_dir: str):
         log.debug("Successfully found the pom.xml in the archive.")
         shutil.move(pom_path, output_dir)
 
+
 def find_pom(decompressed_path: str) -> str:
     """
     Looks for the pom.xml file in the decompressed jar file
@@ -149,6 +151,7 @@ def find_pom(decompressed_path: str) -> str:
         if "pom.xml" in files:
             return os.path.join(root, "pom.xml")
     return ""
+
 
 def extract_jar(jar_path: str, output_dir: str):
     """
