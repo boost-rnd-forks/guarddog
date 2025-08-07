@@ -1,5 +1,5 @@
 rules:
-  - id: maven-goto-statement
+  - id: maven-goto-statements
     languages:
       - java
     message: | 
