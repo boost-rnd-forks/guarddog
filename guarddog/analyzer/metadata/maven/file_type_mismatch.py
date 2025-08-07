@@ -4,8 +4,10 @@ Detects files with extensions that don't match their actual content type
 """
 import os
 from typing import Dict
+import logging
 
 from guarddog.analyzer.metadata.file_type_mismatch import FileTypeMismatchDetector
+log = logging.getLogger("guarddog")
 
 
 class MavenFileTypeMismatchDetector(FileTypeMismatchDetector):
@@ -54,7 +56,6 @@ class MavenFileTypeMismatchDetector(FileTypeMismatchDetector):
             for file_name in files:
                 absolute_path = os.path.join(root, file_name)
                 relative_path = os.path.relpath(absolute_path, base_path)
-
                 # Skip Maven-specific files that are expected to have certain formats
                 if self._should_skip_maven_file(relative_path):
                     continue

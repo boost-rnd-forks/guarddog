@@ -14,7 +14,7 @@ FILE_SIGNATURES = {
     b'\x7FELF': '.elf',   # ELF executable (Linux)
     b'\xFE\xED\xFA\xCE': '.macho',  # Mach-O (macOS)
     b'\xFE\xED\xFA\xCF': '.macho',  # Mach-O 64-bit
-    b'\xCA\xFE\xBA\xBE': '.macho',  # Mach-O universal binary
+    b'\xCA\xFE\xBA\xBE': '.class',  # Mach-O universal binary
 
     # Archives
     b'PK\x03\x04': '.zip',  # ZIP archive (also JAR, WAR, etc.)
@@ -91,11 +91,6 @@ class FileTypeMismatchDetector(Detector):
                 # Read first 32 bytes for signature detection
                 header = f.read(32)
 
-                # Check against known signatures
-                for signature, file_type in FILE_SIGNATURES.items():
-                    if header.startswith(signature):
-                        return file_type
-
                 # Special case for RIFF files (WebP, WAV, AVI)
                 if header.startswith(b'RIFF') and len(header) >= 12:
                     if header[8:12] == b'WEBP':
@@ -104,6 +99,10 @@ class FileTypeMismatchDetector(Detector):
                         return '.wav'
                     elif header[8:12] == b'AVI ':
                         return '.avi'
+                # Check against known signatures
+                for signature, file_type in FILE_SIGNATURES.items():
+                    if header.startswith(signature):
+                        return file_type
 
                 return None
 
@@ -172,11 +171,13 @@ class FileTypeMismatchDetector(Detector):
         Returns:
             tuple[bool, str]: (True if mismatches found, description of issues)
         """
+        log.debug("file type mismatch general detect()...")
         if path is None:
             return False, "No package path provided"
 
         try:
-            package_files = self.get_package_files(package_info, path)
+            # package files from the decompressed project: {rel_path: abs_path}
+            package_files: dict[str, str] = self.get_package_files(package_info, path)
         except Exception as e:
             log.warning(f"Could not get package files: {e}")
             return False, "Could not analyze package files"
@@ -189,13 +190,12 @@ class FileTypeMismatchDetector(Detector):
 
             # Get file extension
             file_extension = os.path.splitext(relative_path)[1].lower()
-
             # Skip files without extensions
             if not file_extension:
                 continue
 
             # Detect actual file type by signature
-            detected_type = self.detect_file_type_by_signature(absolute_path)
+            detected_type: str | None = self.detect_file_type_by_signature(absolute_path)
 
             # Check for signature-based mismatch
             if detected_type and detected_type != file_extension:
@@ -266,6 +266,7 @@ class FileTypeMismatchDetector(Detector):
             ('.odt', '.zip'),
             ('.ods', '.zip'),
             ('.odp', '.zip'),
+            ('.macho', '.class')
         }
 
         return (claimed_ext, detected_type) in acceptable_mismatches
