@@ -6,6 +6,7 @@ from guarddog.analyzer.metadata.maven.potentially_compromised_email_domain impor
 )
 from guarddog.analyzer.metadata.maven.bundled_binary import MavenBundledBinary
 from guarddog.analyzer.metadata.maven.deceptive_author import MavenDeceptiveAuthor
+from guarddog.analyzer.metadata.maven.file_type_mismatch import MavenFileTypeMismatchDetector
 from guarddog.analyzer.metadata.maven.release_zero import MavenReleaseZeroDetector
 from guarddog.analyzer.metadata.maven.unclaimed_maintainer_email_domain import (
     MavenUnclaimedMaintainerEmailDomainDetector,
@@ -18,6 +19,7 @@ classes = [
     MavenPotentiallyCompromisedEmailDomainDetector,
     MavenBundledBinary,
     MavenDeceptiveAuthor,
+    MavenFileTypeMismatchDetector,
     MavenReleaseZeroDetector,
     MavenUnclaimedMaintainerEmailDomainDetector,
 ]
