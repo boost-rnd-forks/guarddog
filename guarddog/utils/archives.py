@@ -20,6 +20,7 @@ def is_supported_archive(path: str) -> bool:
         bool: Represents the decision reached for the file
 
     """
+
     def is_tar_archive(path: str) -> bool:
         tar_exts = [".bz2", ".bzip2", ".gz", ".gzip", ".tgz", ".xz"]
 
@@ -68,7 +69,7 @@ def safe_extract(source_archive: str, target_directory: str) -> None:
         recurse_add_perms(target_directory)
 
     elif zipfile.is_zipfile(source_archive):
-        with zipfile.ZipFile(source_archive, 'r') as zip:
+        with zipfile.ZipFile(source_archive, "r") as zip:
             for file in zip.namelist():
                 # Note: zip.extract cleans up any malicious file name
                 # such as directory traversal attempts This is not the
@@ -76,3 +77,15 @@ def safe_extract(source_archive: str, target_directory: str) -> None:
                 zip.extract(file, path=os.path.join(target_directory, file))
     else:
         raise ValueError(f"unsupported archive extension: {source_archive}")
+
+
+def find_pom(decompressed_path: str) -> str:
+    """
+    Looks for the pom.xml file in the decompressed jar file
+    Looks recursively in META-INF/maven/ for pom.xml
+    """
+    pom_dir: str = os.path.join(decompressed_path, "META-INF/maven")
+    for root, _, files in os.walk(pom_dir):
+        if "pom.xml" in files:
+            return os.path.join(root, "pom.xml")
+    return ""

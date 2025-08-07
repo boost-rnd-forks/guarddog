@@ -7,3 +7,10 @@ class PomXmlValidationError(Exception):
 
     def __init__(self, message: str):
         super().__init__(message)
+
+
+class DependencyGenerationError(Exception):
+    """Raised when failure in generating dependencies."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
