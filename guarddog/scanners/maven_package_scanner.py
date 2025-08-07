@@ -1,12 +1,10 @@
 import logging
 import os
-import subprocess
 import typing
 import xml.etree.ElementTree as ET
 import requests
 import re
 import filecmp
-import zipfile
 import shutil
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -14,15 +12,12 @@ from urllib.parse import urlparse
 from guarddog.analyzer.analyzer import Analyzer
 from guarddog.ecosystems import ECOSYSTEM
 from guarddog.scanners.scanner import PackageScanner
+from guarddog.utils.archives import decompile_jar, extract_jar, find_pom
 
 log = logging.getLogger("guarddog")
 
 MAVEN_CENTRAL_BASE_URL = "https://repo1.maven.org/maven2"
 TRUSTED_DOMAINS = {"repo1.maven.org", "search.maven.org"}
-CFR_JAR_PATH = os.environ.get(
-    "CFR_JAR_PATH",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../cfr-0.152.jar")),
-)
 
 
 class MavenPackageScanner(PackageScanner):
@@ -80,7 +75,7 @@ class MavenPackageScanner(PackageScanner):
         if jar_path.endswith(".jar"):
             log.debug(f"Extracting {jar_path} into {directory}...")
             decompressed_path = os.path.join(directory, "decompressed")
-            self.extract_jar(jar_path, decompressed_path)
+            extract_jar(jar_path, decompressed_path)
         else:
             log.debug(f"Could not extract {jar_path}")
         if (
@@ -94,7 +89,7 @@ class MavenPackageScanner(PackageScanner):
 
         # decompile jar
         decompiled_path: str = os.path.join(directory, "decompiled")
-        self.decompile_jar(jar_path, decompiled_path)
+        decompile_jar(jar_path, decompiled_path)
 
         # diff between retrieved and decompressed pom
         jar_pom: tuple[bool, str] | None = self.diff_pom(
@@ -174,30 +169,6 @@ class MavenPackageScanner(PackageScanner):
         except Exception as e:
             raise Exception(f"Error retrieving Maven package: {e}")
 
-    def extract_jar(self, jar_path: str, output_dir: str):
-        """
-        Extract a jar archive file with zipfile
-        - `jar_path` (str): path to the jar to extract
-        - `output_dir` (str): directory to decompress the jar to
-        """
-        with zipfile.ZipFile(jar_path, "r") as jar:
-            log.debug("Extracting jar package...")
-            output_dir_abs = os.path.abspath(output_dir)
-            for file in jar.namelist():
-                # resolve paths and removes ../
-                safe_path = os.path.abspath(os.path.join(output_dir, file))
-                # ensure safe_path in the output dir
-                if os.path.commonpath([output_dir_abs, safe_path]) != output_dir_abs:
-                    log.warning(f"Skipping potentially unsafe file: {file}")
-                    continue
-                if file.endswith("/"):  # It's a directory
-                    os.makedirs(safe_path, exist_ok=True)
-                    continue
-                os.makedirs(os.path.dirname(safe_path), exist_ok=True)
-                with open(safe_path, "wb") as f:
-                    f.write(jar.read(file))
-        log.debug(f"extracted to {output_dir}")
-
     def find_pom(self, path: str, groupId: str, artifactId: str) -> str | None:
         """
         Finds the pom.xml in the package at `path` if exists
@@ -234,6 +205,8 @@ class MavenPackageScanner(PackageScanner):
         if not os.path.exists(pom_path):
             return None
         jar_pom = self.find_pom(path, groupId, artifactId)
+        if not jar_pom:  # search recursively
+            jar_pom = find_pom(path)
         if jar_pom:
             return filecmp.cmp(jar_pom, pom_path), jar_pom
         else:
@@ -277,47 +250,6 @@ class MavenPackageScanner(PackageScanner):
             log.error(f"An error occurred while fetching Maven data: {e}")
         log.debug(f"No latest release found for {artifact_id}")
         return None, None
-
-    def is_safe_path(self, path: str) -> bool:
-        """Basic path safety check to avoid traversal or injection."""
-        return os.path.isabs(path) or not (".." in path or path.startswith(("/", "\\")))
-
-    def is_jar_file(self, path: str) -> bool:
-        return path.endswith(".jar") and os.path.isfile(path)
-
-    def decompile_jar(self, jar_path: str, dest_path: str):
-        """
-        Decompiles the .jar file using CFR decompiler.
-        Args:
-            - `jar_path` (str): path of the .jar to decompile
-            - `dest_path` (str): path of the destination folder
-            to store the resulting .class files
-        """
-        if not self.is_safe_path(jar_path) or not self.is_jar_file(jar_path):
-            raise ValueError(f"Invalid JAR path: {jar_path}")
-        if not os.path.isfile(CFR_JAR_PATH):
-            raise FileNotFoundError(f"CFR jar file not found: {CFR_JAR_PATH}")
-        if not self.is_safe_path(dest_path):
-            raise ValueError(f"Invalid destination path: {dest_path}")
-
-        os.makedirs(dest_path, exist_ok=True)
-
-        command = [
-            "java",
-            "-jar",
-            CFR_JAR_PATH,
-            jar_path,
-            "--outputdir",
-            dest_path,
-            "--silent",
-            "true",
-        ]
-
-        try:
-            subprocess.run(command, check=True)
-            log.debug(f"Decompiled JAR written to: {os.path.abspath(dest_path)}")
-        except subprocess.CalledProcessError as e:
-            log.error(f"Error running CFR: {e}")
 
     def normalize_email(self, email: str) -> str:
         """

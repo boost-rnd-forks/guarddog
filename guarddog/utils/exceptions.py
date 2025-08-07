@@ -9,6 +9,20 @@ class PomXmlValidationError(Exception):
         super().__init__(message)
 
 
+class ExtractionError(Exception):
+    """Raised when extracting an archive fails."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
+class DecompilationError(Exception):
+    """Raised when decompiling a .jar archive fails."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
 class DependencyGenerationError(Exception):
     """Raised when failure in generating dependencies."""
 
