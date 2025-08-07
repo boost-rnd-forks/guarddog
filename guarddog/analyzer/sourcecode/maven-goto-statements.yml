@@ -1,0 +1,13 @@
+rules:
+  - id: maven-goto-statement
+    languages:
+      - java
+    message: | 
+        The decompiled java code contains goto statements.
+        This is a sign of obfuscation since goto is not supported by java language
+        It means the decompiler could not translate a complex structure 
+    metadata:
+      description: Identify when a package retrieves hidden data from an image and executes it
+    pattern-either: 
+      - pattern: goto $LABEL
+    severity: WARNING
