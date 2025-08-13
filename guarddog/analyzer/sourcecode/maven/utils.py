@@ -28,7 +28,22 @@ def get_email_addresses(path: str) -> set[str]:
     for dev in root.findall(".//mvn:developer", NAMESPACE):
         email = dev.find("mvn:email", NAMESPACE)
         if email is not None and email.text:
-            emails.append(email.text)
+            normalized_email:str = normalize_email(email.text.strip())
+            emails.append(normalized_email)
     if not emails:
         log.warning("No email found in the pom.")
     return set(emails)
+
+
+def normalize_email(email: str) -> str:
+    """
+    Normalize emails "name ([at]) domain.com"
+    into emails "name@domain.com"
+    """
+    if '@' not in email: 
+        normalized_email = re.sub(
+            r"\s*(\(|\[)?\s*at\s*(\)|\])?\s*", "@", email, flags=re.IGNORECASE
+        )
+    else: 
+        normalized_email = email
+    return normalized_email.strip()
