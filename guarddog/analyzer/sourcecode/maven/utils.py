@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 import logging
+import re
 
 from guarddog.utils.archives import find_pom
 
