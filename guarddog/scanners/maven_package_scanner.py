@@ -256,11 +256,11 @@ class MavenPackageScanner(PackageScanner):
         Normalize emails "name ([at]) domain.com"
         into emails "name@domain.com"
         """
-        if '@' not in email: 
+        if "@" not in email:
             normalized_email = re.sub(
                 r"\s*(\(|\[)?\s*at\s*(\)|\])?\s*", "@", email, flags=re.IGNORECASE
             )
-        else: 
+        else:
             normalized_email = email
         return normalized_email.strip()
 
@@ -298,7 +298,7 @@ class MavenPackageScanner(PackageScanner):
             namespace = ""
             if "}" in root.tag:
                 namespace = root.tag.split("}")[0].strip("{")
-            else :
+            else:
                 namespace = "http://maven.apache.org/POM/4.0.0"
             ns = {"mvn": namespace} if namespace else {}
 
