@@ -19,11 +19,13 @@ ACCEPTABLE_TEXT_EXTENSIONS: set = {
     ".yml",
     ".yaml",
     ".properties",
+    ".pro",
     ".cfg",
     ".conf",
     ".ini",
     ".log",
     ".csv",
+    ".mf",
     "",
 }
 
@@ -54,6 +56,8 @@ ACCEPTABLE_ZIP_EXTENSIONS: set = {
     ".epub",  # Electronic Publication (e-book)
     ".xpi",  # Firefox/Thunderbird Extension
 }
+
+ACCEPTABLE_CLASS_EXTENSIONS: set = {".class", ".java-applet"}
 
 
 class FileTypeMismatchDetector(Detector):
@@ -90,7 +94,6 @@ class FileTypeMismatchDetector(Detector):
                 )
                 if extension == ".empty":
                     extension = ""
-            log.debug(f"Mime type: {mime_type} extension: {extension}\n")
             return extension
 
         except FileNotFoundError:
@@ -142,8 +145,6 @@ class FileTypeMismatchDetector(Detector):
 
             # Get file extension
             file_extension = os.path.splitext(relative_path)[1].lower()
-            log.debug(relative_path)
-            log.debug(file_extension)
 
             # Detect actual file type by signature
             detected_type: str | None = self.detect_file_type_by_signature(
@@ -201,8 +202,14 @@ class FileTypeMismatchDetector(Detector):
         acceptable_txt_mismatches = set(
             (ext, ".txt") for ext in ACCEPTABLE_TEXT_EXTENSIONS
         )
+        acceptable_class_mismatches = set(
+            (ext, ".class") for ext in ACCEPTABLE_CLASS_EXTENSIONS
+        )
         acceptable_mismatches = acceptable_txt_mismatches.union(
             acceptable_zip_mismatches
-        )
+        ).union(acceptable_class_mismatches)
 
-        return (claimed_ext, detected_type) in acceptable_mismatches
+        return (claimed_ext, detected_type) in acceptable_mismatches or (
+            detected_type,
+            claimed_ext,
+        ) in acceptable_class_mismatches
