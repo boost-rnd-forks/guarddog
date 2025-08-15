@@ -4,6 +4,7 @@ from guarddog.analyzer.sourcecode.maven.dangerous_pom_xml import MavenDangerousP
 from guarddog.analyzer.sourcecode.maven.unclaimed_maintainer_email_domain import (
     MavenUnclaimedMaintainerEmailDomainDetector,
 )
+from guarddog.analyzer.sourcecode.maven.file_type_mismatch import MavenFileTypeMismatchDetector
 from guarddog.analyzer.sourcecode.detector import Detector
 
 MAVEN_PYTHON_RULES: dict[str, Detector] = {}
@@ -11,6 +12,7 @@ MAVEN_PYTHON_RULES: dict[str, Detector] = {}
 classes = [
     MavenDangerousPomXML,
     MavenUnclaimedMaintainerEmailDomainDetector,
+    MavenFileTypeMismatchDetector,
 ]
 
 for detectorClass in classes:

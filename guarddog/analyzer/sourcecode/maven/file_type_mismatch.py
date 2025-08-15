@@ -1,12 +1,14 @@
-""" File Type Mismatch Detector for Maven
+"""File Type Mismatch Detector for Maven
 
 Detects files with extensions that don't match their actual content type
 """
+
 import os
 from typing import Dict
 import logging
 
-from guarddog.analyzer.metadata.file_type_mismatch import FileTypeMismatchDetector
+from guarddog.analyzer.sourcecode.file_type_mismatch import FileTypeMismatchDetector
+
 log = logging.getLogger("guarddog")
 
 
@@ -27,7 +29,7 @@ class MavenFileTypeMismatchDetector(FileTypeMismatchDetector):
         # Override description to be Maven-specific
         self.description = "Detects Maven package files with misleading extensions that don't match their actual type"
 
-    def get_package_files(self, package_info: dict, path: str) -> Dict[str, str]:
+    def get_package_files(self, path: str) -> Dict[str, str]:
         """
         Get all files in the Maven package for analysis.
 
@@ -42,61 +44,22 @@ class MavenFileTypeMismatchDetector(FileTypeMismatchDetector):
 
         # For Maven packages, we want to analyze the decompressed JAR contents
         # Check if we have a decompressed path from the Maven scanner
-        decompressed_path = package_info.get("path", {}).get("decompressed_path")
+        decompressed_path = os.path.join(path, "decompressed")
 
         if decompressed_path and os.path.exists(decompressed_path):
             # Analyze decompressed JAR contents
+            log.debug(f"decompressed dir: {os.listdir(decompressed_path)}")
             base_path = decompressed_path
         else:
             # Fall back to the main package path
+            log.warning("could not find decompressed path")
             base_path = path
-
+        log.debug(f"**base path {base_path}")
         # Walk through all files in the package
         for root, dirs, files in os.walk(base_path):
             for file_name in files:
                 absolute_path = os.path.join(root, file_name)
                 relative_path = os.path.relpath(absolute_path, base_path)
-                # Skip Maven-specific files that are expected to have certain formats
-                if self._should_skip_maven_file(relative_path):
-                    continue
-
                 package_files[relative_path] = absolute_path
 
         return package_files
-
-    @staticmethod
-    def _should_skip_maven_file(relative_path: str) -> bool:
-        """
-        Check if a file should be skipped from analysis (Maven-specific logic).
-
-        Args:
-            relative_path (str): Relative path of the file
-
-        Returns:
-            bool: True if the file should be skipped
-        """
-        # Skip META-INF directory files (they have specific formats)
-        if relative_path.startswith('META-INF/'):
-            return True
-
-        # Skip Maven build artifacts
-        if '/target/' in relative_path or relative_path.startswith('target/'):
-            return True
-
-        # Skip common Maven files that have expected formats
-        maven_files = {
-            'pom.xml',
-            'maven-metadata.xml',
-            'pom.properties',
-            '.maven-metadata.xml',
-        }
-
-        file_name = os.path.basename(relative_path)
-        if file_name in maven_files:
-            return True
-
-        # Skip checksums and signatures
-        if file_name.endswith(('.md5', '.sha1', '.sha256', '.sha512', '.asc', '.sig')):
-            return True
-
-        return False
