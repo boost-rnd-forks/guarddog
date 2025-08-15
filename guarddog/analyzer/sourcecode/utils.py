@@ -4,6 +4,12 @@ from typing import Optional
 
 import whois  # type: ignore
 
+NPM_MAINTAINER_EMAIL_WARNING = (
+    "note that NPM's API may not provide accurate information regarding the maintainer's email, "
+    "so this detector may cause false positives for NPM packages. "
+    "see https://www.theregister.com/2022/05/10/security_npm_email/"
+)
+
 
 @cache
 def get_domain_creation_date(domain) -> tuple[Optional[datetime], bool]:

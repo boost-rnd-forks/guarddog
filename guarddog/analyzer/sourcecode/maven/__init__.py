@@ -1,12 +1,16 @@
 # Maven-specific metadata security rules
 # Currently empty - rules can be added here in the future
 from guarddog.analyzer.sourcecode.maven.dangerous_pom_xml import MavenDangerousPomXML
+from guarddog.analyzer.sourcecode.maven.unclaimed_maintainer_email_domain import (
+    MavenUnclaimedMaintainerEmailDomainDetector,
+)
 from guarddog.analyzer.sourcecode.detector import Detector
 
 MAVEN_PYTHON_RULES: dict[str, Detector] = {}
 
 classes = [
     MavenDangerousPomXML,
+    MavenUnclaimedMaintainerEmailDomainDetector,
 ]
 
 for detectorClass in classes:

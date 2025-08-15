@@ -256,10 +256,13 @@ class MavenPackageScanner(PackageScanner):
         Normalize emails "name ([at]) domain.com"
         into emails "name@domain.com"
         """
-        email_with_at = re.sub(
-            r"\s*(\(|\[)?\s*at\s*(\)|\])?\s*", "@", email, flags=re.IGNORECASE
-        )
-        return email_with_at.strip()
+        if "@" not in email:
+            normalized_email = re.sub(
+                r"\s*(\(|\[)?\s*at\s*(\)|\])?\s*", "@", email, flags=re.IGNORECASE
+            )
+        else:
+            normalized_email = email
+        return normalized_email.strip()
 
     def get_package_info(
         self,
@@ -295,6 +298,8 @@ class MavenPackageScanner(PackageScanner):
             namespace = ""
             if "}" in root.tag:
                 namespace = root.tag.split("}")[0].strip("{")
+            else:
+                namespace = "http://maven.apache.org/POM/4.0.0"
             ns = {"mvn": namespace} if namespace else {}
 
             # find email
