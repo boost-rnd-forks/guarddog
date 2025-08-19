@@ -31,6 +31,8 @@ prettytable="^3.6.0"
 yara-python = "^4.5.1"
 disposable-email-domains = ">=0.0.103,<0.0.121"
 setuptools = ">=70.3,<79.0"
+python-magic = "^0.4.27"
+ruamel-yaml-clib = "0.2.12"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.4.1"
