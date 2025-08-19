@@ -68,9 +68,5 @@ class UnclaimedMaintainerEmailDomainDetector(Detector):
         return has_issues, "\n".join(messages)
 
     @abstractmethod
-    def get_project_latest_release_date(self, package_info):
-        pass
-
-    @abstractmethod
     def get_email_addresses(self, package_info) -> set[str]:
         return set()
