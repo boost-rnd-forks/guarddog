@@ -8,6 +8,7 @@ from typing import Dict
 import logging
 
 from guarddog.analyzer.sourcecode.file_type_mismatch import FileTypeMismatchDetector
+from guarddog.utils.archives import DECOMPRESSED_PATH
 
 log = logging.getLogger("guarddog")
 
@@ -44,7 +45,7 @@ class MavenFileTypeMismatchDetector(FileTypeMismatchDetector):
 
         # For Maven packages, we want to analyze the decompressed JAR contents
         # Check if we have a decompressed path from the Maven scanner
-        decompressed_path = os.path.join(path, "decompressed")
+        decompressed_path = os.path.join(path, DECOMPRESSED_PATH)
 
         if decompressed_path and os.path.exists(decompressed_path):
             # Analyze decompressed JAR contents

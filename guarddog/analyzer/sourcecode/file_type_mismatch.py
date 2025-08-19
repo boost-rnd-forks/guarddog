@@ -159,7 +159,9 @@ class FileTypeMismatchDetector(Detector):
             ):
                 # Allow some common exceptions (e.g., .jar is ZIP-based)
                 if not self._is_acceptable_mismatch(file_extension, detected_type):
-                    log.debug(f"found mismatch! {detected_type} but {file_extension}\n")
+                    log.debug(
+                        f"found mismatch! {relative_path}: {detected_type} detected but extension {file_extension}\n"
+                    )
                     mismatches.append(
                         {
                             "file": relative_path,
@@ -197,7 +199,7 @@ class FileTypeMismatchDetector(Detector):
             bool: True if the mismatch is acceptable
         """
         acceptable_zip_mismatches = set(
-            (ext, ".zip") for ext in ACCEPTABLE_TEXT_EXTENSIONS
+            (ext, ".zip") for ext in ACCEPTABLE_ZIP_EXTENSIONS
         )
         acceptable_txt_mismatches = set(
             (ext, ".txt") for ext in ACCEPTABLE_TEXT_EXTENSIONS
@@ -208,8 +210,7 @@ class FileTypeMismatchDetector(Detector):
         acceptable_mismatches = acceptable_txt_mismatches.union(
             acceptable_zip_mismatches
         ).union(acceptable_class_mismatches)
-
         return (claimed_ext, detected_type) in acceptable_mismatches or (
             detected_type,
             claimed_ext,
-        ) in acceptable_class_mismatches
+        ) in acceptable_mismatches
