@@ -1,9 +1,11 @@
 from abc import abstractmethod
-from typing import Optional
+import logging
 
-from guarddog.analyzer.metadata.detector import Detector
+from guarddog.analyzer.sourcecode.detector import Detector
 
 from .utils import extract_email_address_domain, get_domain_creation_date
+
+log = logging.getLogger("guarddog")
 
 
 class UnclaimedMaintainerEmailDomainDetector(Detector):
@@ -22,11 +24,8 @@ class UnclaimedMaintainerEmailDomainDetector(Detector):
 
     def detect(
         self,
-        package_info,
-        path: Optional[str] = None,
-        name: Optional[str] = None,
-        version: Optional[str] = None,
-    ) -> tuple[bool, str]:
+        path: str | None = None,
+    ) -> tuple[bool, str | None]:
         """
         Uses a package's information to determine
         if the maintainer's email domain is unclaimed and thus exposed to hijacking
@@ -38,8 +37,11 @@ class UnclaimedMaintainerEmailDomainDetector(Detector):
             bool: True if email domain is unclaimed
             str: Message explaining the issue
         """
-
-        emails = self.get_email_addresses(package_info)
+        if not path:
+            log.error("path required to run this heuristic.")
+            return False, None
+        emails = self.get_email_addresses(path)
+        log.debug(f"found emails {emails}")
 
         if len(emails) == 0:
             # No e-mail is set for this package, hence no risk
@@ -56,7 +58,6 @@ class UnclaimedMaintainerEmailDomainDetector(Detector):
                 continue
 
             # domain does not exist
-
             has_issues = True
 
             messages.append(
@@ -65,10 +66,6 @@ class UnclaimedMaintainerEmailDomainDetector(Detector):
             )
 
         return has_issues, "\n".join(messages)
-
-    @abstractmethod
-    def get_project_latest_release_date(self, package_info):
-        pass
 
     @abstractmethod
     def get_email_addresses(self, package_info) -> set[str]:
