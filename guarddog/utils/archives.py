@@ -145,6 +145,8 @@ def find_pom(decompressed_path: str) -> str:
     Looks recursively in META-INF/maven/ for pom.xml
     """
     pom_dir: str = os.path.join(decompressed_path, "META-INF/maven")
+    if not os.path.isdir(pom_dir):
+        pom_dir = decompressed_path
     for root, _, files in os.walk(pom_dir):
         if "pom.xml" in files:
             return os.path.join(root, "pom.xml")
