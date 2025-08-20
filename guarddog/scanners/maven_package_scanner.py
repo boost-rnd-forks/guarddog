@@ -204,6 +204,7 @@ class MavenPackageScanner(PackageScanner):
         """
         if not os.path.exists(pom_path):
             return None
+        # search in META-INF/maven
         jar_pom = self.find_pom(path, groupId, artifactId)
         if not jar_pom:  # search recursively
             jar_pom = find_pom(path)

@@ -4,9 +4,11 @@ import subprocess
 import xml.etree.ElementTree as ET
 import re
 import logging
+import shutil
 
 from guarddog.analyzer.sourcecode.detector import Detector
 from guarddog.utils.exceptions import PomXmlValidationError
+from guarddog.utils.archives import find_pom
 
 OUTPUT_FILE = "effective-pom.xml"
 NAMESPACE = {"mvn": "http://maven.apache.org/POM/4.0.0"}
@@ -141,6 +143,11 @@ class MavenDangerousPomXML(Detector):
         pom_path = os.path.join(path, "pom.xml")
 
         if not os.path.isfile(pom_path):
+            # search recursively
+            pom_path = find_pom(path)
+            shutil.copy(pom_path, path)
+
+        if not pom_path:
             raise FileNotFoundError(f"Error: No 'pom.xml' found in '{path}'.")
 
         command = ["mvn", "help:effective-pom", f"-Doutput={OUTPUT_FILE}"]
