@@ -13,6 +13,9 @@ log = logging.getLogger("guarddog")
 ACCEPTABLE_TEXT_EXTENSIONS: set = {
     ".txt",
     ".md",
+    "html",
+    ".gradle",
+    ".java",
     ".rst",
     ".json",
     ".xml",
