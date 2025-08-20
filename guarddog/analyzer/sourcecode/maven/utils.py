@@ -10,11 +10,11 @@ log = logging.getLogger("guarddog")
 
 def get_email_addresses(path: str) -> set[str]:
     """
-    Extract email addresses from Maven package metadata.
+    Extract email addresses from the pom.xml file in the given package source code directory.
     Args:
-        package_info (dict): Maven package metadata
+        path (str): path to the project
     Returns:
-        set[str]: Set of email addresses found in the metadata
+        set[str]: Set of email addresses found in the pom
     """
     log.debug("looking for pom to find developer's emails...")
     pom_path = find_pom(path)
@@ -25,7 +25,6 @@ def get_email_addresses(path: str) -> set[str]:
     # find email
     tree = ET.parse(pom_path)
     root = tree.getroot()
-    emails = []
     for dev in root.findall(".//mvn:developer", NAMESPACE):
         email = dev.find("mvn:email", NAMESPACE)
         if email is not None and email.text:
