@@ -2,7 +2,7 @@ from abc import abstractmethod
 from typing import Dict
 import os
 import logging
-from magika import Magika
+from magika import Magika  # type: ignore
 
 from guarddog.analyzer.sourcecode.detector import Detector
 
