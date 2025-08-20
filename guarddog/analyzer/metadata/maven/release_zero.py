@@ -11,7 +11,7 @@ log = logging.getLogger("guarddog")
 
 
 class MavenReleaseZeroDetector(ReleaseZeroDetector):
-    def detect(self, package_info, path: Optional[str] = None, name: Optional[str] = None,
+    def detect(self, package_info: dict, path: Optional[str] = None, name: Optional[str] = None,
                version: Optional[str] = None) -> tuple[bool, str]:
         """
         Detects if a Maven package's latest version is 0.0.0 or 0.0
@@ -27,7 +27,7 @@ class MavenReleaseZeroDetector(ReleaseZeroDetector):
         """
         log.debug(f"Running zero version heuristic on Maven package {name} version {version}")
 
-        latest_version = package_info.get("version", "")
+        latest_version, _ = package_info.get("info", {}).get("latest_version")
 
-        return (latest_version in ["0.0.0", "0.0"],
+        return (latest_version in ["0.0.0", "0.0", "0"],
                 ReleaseZeroDetector.MESSAGE_TEMPLATE % latest_version)
