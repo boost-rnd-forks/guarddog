@@ -11,7 +11,7 @@ MAVEN_PYTHON_RULES: dict[str, Detector] = {}
 
 classes = [
     MavenDangerousPomXML,
-    MavenBundledBinary
+    MavenBundledBinary,
     MavenUnclaimedMaintainerEmailDomainDetector,
 ]
 
