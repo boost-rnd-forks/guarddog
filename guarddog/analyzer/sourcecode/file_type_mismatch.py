@@ -2,20 +2,15 @@ from abc import abstractmethod
 from typing import Dict
 import os
 import logging
-import magic # type: ignore
-import mimetypes
+from magika import Magika
 
 from guarddog.analyzer.sourcecode.detector import Detector
 
 log = logging.getLogger("guarddog")
 
-# File extensions that should never contain binary content
 ACCEPTABLE_TEXT_EXTENSIONS: set = {
     ".txt",
     ".md",
-    "html",
-    ".gradle",
-    ".java",
     ".rst",
     ".json",
     ".xml",
@@ -62,6 +57,17 @@ ACCEPTABLE_ZIP_EXTENSIONS: set = {
 
 ACCEPTABLE_CLASS_EXTENSIONS: set = {".class", ".java-applet"}
 
+ACCEPTABLE_JAVA_EXTENSIONS: set = {
+    ".java",
+    ".groovy",
+    ".kt",
+    ".kts",
+    ".scala",
+    ".sc",
+    ".gradle",
+    ".gradle.kts",
+}
+
 
 class FileTypeMismatchDetector(Detector):
     """Detects files with extensions that don't match their actual content type."""
@@ -75,7 +81,7 @@ class FileTypeMismatchDetector(Detector):
         )
 
     @staticmethod
-    def detect_file_type_by_signature(file_path: str) -> str | None:
+    def detect_file_type_by_signature(file_path: str) -> list[str] | None:
         """
         Detect the actual file type based on file signature (magic bytes).
 
@@ -86,18 +92,10 @@ class FileTypeMismatchDetector(Detector):
             Optional[str]: Detected file extension or None if not detected
         """
         try:
-            # get mime type from file
-            mime_type = magic.from_file(file_path, mime=True)
-
-            # get extension from mime type
-            extension = mimetypes.guess_extension(mime_type)
-            if not extension:
-                extension = "." + mime_type.split("/")[-1].split(".")[-1].replace(
-                    "x-", ""
-                )
-                if extension == ".empty":
-                    extension = ""
-            return extension
+            magika = Magika()
+            res = magika.identify_path(file_path)
+            extensions = ["." + ext for ext in res.output.extensions]
+            return extensions
 
         except FileNotFoundError:
             log.error(f"Error: File not found at '{file_path}'")
@@ -150,26 +148,29 @@ class FileTypeMismatchDetector(Detector):
             file_extension = os.path.splitext(relative_path)[1].lower()
 
             # Detect actual file type by signature
-            detected_type: str | None = self.detect_file_type_by_signature(
+            detected_types: list[str] | None = self.detect_file_type_by_signature(
                 absolute_path
             )
 
             # Check for signature-based mismatch
-            if (detected_type and not file_extension) or (
-                detected_type
+            if (detected_types and not file_extension) or (
+                detected_types
                 and file_extension
-                and not detected_type.startswith(file_extension)
+                and all(dt != file_extension for dt in detected_types)
             ):
                 # Allow some common exceptions (e.g., .jar is ZIP-based)
-                if not self._is_acceptable_mismatch(file_extension, detected_type):
+                if not any(
+                    self._is_acceptable_mismatch(file_extension, dt)
+                    for dt in detected_types
+                ):
                     log.debug(
-                        f"found mismatch! {relative_path}: {detected_type} detected but extension {file_extension}\n"
+                        f"found mismatch! {relative_path}: {detected_types} detected but extension {file_extension}\n"
                     )
                     mismatches.append(
                         {
                             "file": relative_path,
                             "claimed_extension": file_extension,
-                            "detected_type": detected_type,
+                            "detected_type": detected_types,
                         }
                     )
 
@@ -201,19 +202,16 @@ class FileTypeMismatchDetector(Detector):
         Returns:
             bool: True if the mismatch is acceptable
         """
-        acceptable_zip_mismatches = set(
-            (ext, ".zip") for ext in ACCEPTABLE_ZIP_EXTENSIONS
-        )
-        acceptable_txt_mismatches = set(
-            (ext, ".txt") for ext in ACCEPTABLE_TEXT_EXTENSIONS
-        )
-        acceptable_class_mismatches = set(
-            (ext, ".class") for ext in ACCEPTABLE_CLASS_EXTENSIONS
-        )
-        acceptable_mismatches = acceptable_txt_mismatches.union(
-            acceptable_zip_mismatches
-        ).union(acceptable_class_mismatches)
-        return (claimed_ext, detected_type) in acceptable_mismatches or (
-            detected_type,
-            claimed_ext,
-        ) in acceptable_mismatches
+        # Define groups of interchangeable extensions
+        acceptable_groups = [
+            set(ACCEPTABLE_ZIP_EXTENSIONS) | {".zip"},
+            set(ACCEPTABLE_TEXT_EXTENSIONS) | {".txt"},
+            set(ACCEPTABLE_CLASS_EXTENSIONS) | {".class"},
+            set(ACCEPTABLE_JAVA_EXTENSIONS) | {".java"},
+        ]
+
+        for group in acceptable_groups:
+            if claimed_ext in group and detected_type in group:
+                return True
+
+        return False
