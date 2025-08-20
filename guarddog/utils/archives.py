@@ -15,6 +15,9 @@ CFR_JAR_PATH = os.environ.get(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../cfr-0.152.jar")),
 )
 
+DECOMPRESSED_PATH = "decompressed"
+DECOMPILED_PATH = "decompiled"
+
 
 def is_supported_archive(path: str) -> bool:
     """
