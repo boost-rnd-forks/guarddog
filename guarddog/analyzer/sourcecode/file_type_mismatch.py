@@ -2,7 +2,7 @@ from abc import abstractmethod
 from typing import Dict
 import os
 import logging
-import magic
+import magic # type: ignore
 import mimetypes
 
 from guarddog.analyzer.sourcecode.detector import Detector
