@@ -27,6 +27,7 @@ def extract_owner_and_repo(url) -> Tuple[Optional[str], Optional[str]]:
     if match:
         owner = match.group(1)
         repo = match.group(2)
+        log.debug(f"owner: {owner}, repo: {repo}")
         return owner, repo
     return None, None
 
@@ -137,6 +138,7 @@ def find_github_candidates_from_pom(pom_path) -> Tuple[set[str], Optional[str]]:
 
         # Also look for GitHub URLs in other common places
         url_element = root.find(".//mvn:url", ns) if ns else root.find(".//url")
+        log.debug(f"<url>: {url_element}")
         if url_element is not None and url_element.text:
             url_text = url_element.text.strip()
             if "github.com" in url_text:
@@ -203,15 +205,24 @@ def exclude_result(file_name, repo_root, pkg_root):
 
 def find_mismatch_for_tag(repo, tag, base_path, repo_path):
     """Find mismatched files between repository tag and package"""
-    repo.checkout(tag)
+    log.debug(f"checkout {tag}")
+    try: 
+        repo.checkout(tag)
+        log.debug("checkout successful!!!")
+    except Exception as e: 
+        #log.error(f"Error running `git checkout {tag}`: {e}")
+        raise Exception(f"Error running `git checkout {tag}`: {e}")
     mismatch = []
 
     for root, dirs, files in os.walk(base_path):
         relative_path = os.path.relpath(root, base_path)
         repo_root = os.path.join(repo_path, relative_path)
+        log.debug(f"repo root: {repo_root}")
 
         if not os.path.exists(repo_root):
+            log.debug("Path does not exist")
             continue
+        log.debug("analysing files...")
 
         repo_files = list(filter(
             lambda x: os.path.isfile(os.path.join(repo_root, x)),
@@ -221,7 +232,7 @@ def find_mismatch_for_tag(repo, tag, base_path, repo_path):
         for file_name in repo_files:
             if file_name not in files:  # ignore files we don't have in the distribution
                 continue
-
+            log.debug(f"Comparing {os.path.join(repo_root, file_name)} and {os.path.join(root, file_name)}")
             repo_hash, repo_content = get_file_hash(os.path.join(repo_root, file_name))
             pkg_hash, pkg_content = get_file_hash(os.path.join(root, file_name))
 
@@ -243,7 +254,8 @@ def find_suitable_tags_in_list(tags, version):
     """Find tags that match the given version"""
     tag_candidates = []
     for tag_name in tags:
-        if tag_name.endswith(version):
+        normalized_tag = tag_name.lstrip('refs/tags/').lstrip('v').lstrip('release-')
+        if normalized_tag and normalized_tag in version:
             tag_candidates.append(tag_name)
     return tag_candidates
 
@@ -255,7 +267,7 @@ def find_suitable_tags(repo, version):
     for ref in repo.references:
         match = tags_regex.match(ref)
         if match is not None:
-            tags.append(match.group(1))
+            tags.append(match.group(0))
 
     return find_suitable_tags_in_list(tags, version)
 
@@ -294,12 +306,14 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
 
         # Extract GitHub URLs from POM
         github_urls, best_github_candidate = find_github_candidates_from_pom(pom_path)
+        log.debug(f"Found a github url: {github_urls}")
         if len(github_urls) == 0:
             return False, "Could not find any GitHub url in the project's POM"
 
         # Find the best GitHub URL
         github_url = find_best_github_candidate((github_urls, best_github_candidate), name)
         if github_url is None:
+            log.warning("Could not find a good GitHub url in the project's POM")
             return False, "Could not find a good GitHub url in the project's POM"
 
         log.debug(f"Using GitHub URL {github_url}")
@@ -315,8 +329,10 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
             raise Exception("no current scanning directory")
 
         repo_path = os.path.join(tmp_dir, "sources", name)
+        log.debug("Cloning the repo...")
         try:
             repo = pygit2.clone_repository(url=github_url, path=repo_path)
+            log.debug("Successfully cloned github repo")
         except pygit2.GitError as git_error:
             # Handle generic Git-related errors
             raise Exception(f"Error while cloning repository {str(git_error)} with github url {github_url}")
@@ -327,7 +343,7 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
         tag_candidates = find_suitable_tags(repo, version)
         if len(tag_candidates) == 0:
             return False, "Could not find any suitable tag in repository"
-
+        log.debug(f"Tags : {tag_candidates}")
         target_tag = None
         # TODO: this one is a bit weak. let's find something stronger - maybe use the closest string?
         for tag in tag_candidates:
@@ -337,7 +353,7 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
         base_path = package_info.get("path", {}).get("decompressed_path")
         if not base_path or not os.path.exists(base_path):
             return False, "Could not find decompressed package contents"
-
+        log.debug("look for mismatches")
         mismatch = find_mismatch_for_tag(repo, target_tag, base_path, repo_path)
         message = "\n".join(map(
             lambda x: "* " + x["file"],
