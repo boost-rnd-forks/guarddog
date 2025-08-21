@@ -1,6 +1,7 @@
 # Maven-specific metadata security rules
 # Currently empty - rules can be added here in the future
 from guarddog.analyzer.sourcecode.maven.dangerous_pom_xml import MavenDangerousPomXML
+from guarddog.analyzer.sourcecode.maven.file_type_mismatch import MavenFileTypeMismatchDetector
 from guarddog.analyzer.sourcecode.maven.bundled_binary import MavenBundledBinary
 from guarddog.analyzer.sourcecode.maven.unclaimed_maintainer_email_domain import (
     MavenUnclaimedMaintainerEmailDomainDetector,
@@ -11,6 +12,7 @@ MAVEN_PYTHON_RULES: dict[str, Detector] = {}
 
 classes = [
     MavenDangerousPomXML,
+    MavenFileTypeMismatchDetector,
     MavenBundledBinary,
     MavenUnclaimedMaintainerEmailDomainDetector,
 ]

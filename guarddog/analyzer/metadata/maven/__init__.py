@@ -5,7 +5,6 @@ from guarddog.analyzer.metadata.maven.potentially_compromised_email_domain impor
     MavenPotentiallyCompromisedEmailDomainDetector,
 )
 from guarddog.analyzer.metadata.maven.deceptive_author import MavenDeceptiveAuthor
-from guarddog.analyzer.metadata.maven.file_type_mismatch import MavenFileTypeMismatchDetector
 from guarddog.analyzer.metadata.maven.release_zero import MavenReleaseZeroDetector
 
 MAVEN_METADATA_RULES: dict[str, Detector] = {}
@@ -14,7 +13,6 @@ classes = [
     MavenEmptyInfoDetector,
     MavenPotentiallyCompromisedEmailDomainDetector,
     MavenDeceptiveAuthor,
-    MavenFileTypeMismatchDetector,
     MavenReleaseZeroDetector,
 ]
 

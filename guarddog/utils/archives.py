@@ -104,7 +104,7 @@ def extract_and_decompile_jar(jar_path: str, output_dir: str):
         raise ValueError(f"Invalid jar file provided at {jar_path}")
 
     # decompress jar file
-    decompressed_path: str = os.path.join(output_dir, "decompressed")
+    decompressed_path: str = os.path.join(output_dir, DECOMPRESSED_PATH)
     try:
         extract_jar(jar_path, decompressed_path)
     except Exception as e:
@@ -120,7 +120,7 @@ def extract_and_decompile_jar(jar_path: str, output_dir: str):
         log.error(f"The project could not be extracted from {jar_path}.")
 
     # decompile jar file
-    decompiled_path: str = os.path.join(output_dir, "decompiled")
+    decompiled_path: str = os.path.join(output_dir, DECOMPILED_PATH)
     try:
         decompile_jar(jar_path, decompiled_path)
     except Exception:

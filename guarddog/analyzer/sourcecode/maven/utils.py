@@ -12,7 +12,7 @@ def get_email_addresses(path: str) -> set[str]:
     """
     Extract email addresses from the pom.xml file in the given package source code directory.
     Args:
-        package_info (dict): Maven package metadata
+        path (str): path to the project
     Returns:
         set[str]: Set of email addresses found in the pom
     """

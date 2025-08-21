@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 from guarddog.analyzer.analyzer import Analyzer
 from guarddog.ecosystems import ECOSYSTEM
 from guarddog.scanners.scanner import PackageScanner
-from guarddog.utils.archives import decompile_jar, extract_jar, find_pom
+from guarddog.utils.archives import decompile_jar, extract_jar, find_pom, DECOMPILED_PATH, DECOMPRESSED_PATH
 
 log = logging.getLogger("guarddog")
 
@@ -73,7 +73,7 @@ class MavenPackageScanner(PackageScanner):
         # decompress jar
         decompressed_path: str = ""
         if jar_path.endswith(".jar"):
-            decompressed_path = os.path.join(directory, "decompressed")
+            decompressed_path = os.path.join(directory, DECOMPRESSED_PATH)
             extract_jar(jar_path, decompressed_path)
         else:
             log.error(f"Invalid JAR archive {jar_path}.")
@@ -85,7 +85,7 @@ class MavenPackageScanner(PackageScanner):
             log.error(f"The project could not be extracted from {jar_path}")
 
         # decompile jar
-        decompiled_path: str = os.path.join(directory, "decompiled")
+        decompiled_path: str = os.path.join(directory, DECOMPILED_PATH)
         decompile_jar(jar_path, decompiled_path)
 
         # diff between retrieved and decompressed pom
