@@ -1,22 +1,29 @@
-""" Repository Integrity Mismatch Detector for Maven
+"""Repository Integrity Mismatch Detector for Maven
 
 Detects if a Maven package contains files that differ from the source repository
 """
+
 import hashlib
 import logging
 import os
 import re
 import xml.etree.ElementTree as ET
 from typing import Optional, Tuple
+import requests
+from urllib.parse import urlparse
 
 import pygit2  # type: ignore
 import urllib3.util
 
 from guarddog.analyzer.metadata.repository_integrity_mismatch import IntegrityMismatch
 
-GH_REPO_REGEX = r'(?:https?://)?(?:www\.)?github\.com/(?:[\w-]+/)(?:[\w-]+)'
-GH_REPO_OWNER_REGEX = r'(?:https?://)?(?:www\.)?github\.com/([\w-]+)/([\w-]+)'
-SCM_GIT_REGEX = r'scm:git:(?:https?://)?(?:www\.)?github\.com/([\w-]+)/([\w-]+)(?:\.git)?'
+GH_REPO_REGEX = r"(?:https?://)?(?:www\.)?github\.com/(?:[\w-]+/)(?:[\w-]+)"
+GH_REPO_OWNER_REGEX = r"(?:https?://)?(?:www\.)?github\.com/([\w-]+)/([\w-]+)"
+SCM_GIT_REGEX = (
+    r"scm:git:(?:https?://)?(?:www\.)?github\.com/([\w-]+)/([\w-]+)(?:\.git)?"
+)
+MAVEN_CENTRAL_BASE_URL = "https://repo1.maven.org/maven2"
+TRUSTED_DOMAINS = {"repo1.maven.org", "search.maven.org"}
 
 log = logging.getLogger("guarddog")
 
@@ -62,15 +69,17 @@ def find_best_github_candidate(all_candidates_and_highlighted_link, name):
     for entry in clean_candidates:
         owner, repo = extract_owner_and_repo(entry)
         if repo is not None and (
-                # Similar name matching logic as PyPI version
-                repo.lower() in name.lower() or name.lower() in repo.lower()):
+            # Similar name matching logic as PyPI version
+            repo.lower() in name.lower()
+            or name.lower() in repo.lower()
+        ):
             return entry
     return None
 
 
 def get_file_hash(path):
     """Calculate SHA256 hash of a file"""
-    with open(path, 'rb') as f:
+    with open(path, "rb") as f:
         # Read the contents of the file
         file_contents = f.read()
         # Create a hash object
@@ -112,8 +121,14 @@ def find_github_candidates_from_pom(pom_path) -> Tuple[set[str], Optional[str]]:
         scm = root.find(".//mvn:scm", ns) if ns else root.find(".//scm")
         if scm is not None:
             # Check connection URLs
-            connection = scm.find("mvn:connection", ns) if ns else scm.find("connection")
-            dev_connection = scm.find("mvn:developerConnection", ns) if ns else scm.find("developerConnection")
+            connection = (
+                scm.find("mvn:connection", ns) if ns else scm.find("connection")
+            )
+            dev_connection = (
+                scm.find("mvn:developerConnection", ns)
+                if ns
+                else scm.find("developerConnection")
+            )
             scm_url = scm.find("mvn:url", ns) if ns else scm.find("url")
 
             # Parse SCM URLs
@@ -138,7 +153,6 @@ def find_github_candidates_from_pom(pom_path) -> Tuple[set[str], Optional[str]]:
 
         # Also look for GitHub URLs in other common places
         url_element = root.find(".//mvn:url", ns) if ns else root.find(".//url")
-        log.debug(f"<url>: {url_element}")
         if url_element is not None and url_element.text:
             url_text = url_element.text.strip()
             if "github.com" in url_text:
@@ -187,12 +201,12 @@ def exclude_result(file_name, repo_root, pkg_root):
             pkg_tree = ET.parse(os.path.join(pkg_root, file_name))
 
             # Simple comparison - could be made more sophisticated
-            repo_str = ET.tostring(repo_tree.getroot(), encoding='unicode')
-            pkg_str = ET.tostring(pkg_tree.getroot(), encoding='unicode')
+            repo_str = ET.tostring(repo_tree.getroot(), encoding="unicode")
+            pkg_str = ET.tostring(pkg_tree.getroot(), encoding="unicode")
 
             # Normalize whitespace for comparison
-            repo_normalized = ' '.join(repo_str.split())
-            pkg_normalized = ' '.join(pkg_str.split())
+            repo_normalized = " ".join(repo_str.split())
+            pkg_normalized = " ".join(pkg_str.split())
 
             if repo_normalized == pkg_normalized:
                 return True
@@ -206,11 +220,11 @@ def exclude_result(file_name, repo_root, pkg_root):
 def find_mismatch_for_tag(repo, tag, base_path, repo_path):
     """Find mismatched files between repository tag and package"""
     log.debug(f"checkout {tag}")
-    try: 
+    try:
         repo.checkout(tag)
         log.debug("checkout successful!!!")
-    except Exception as e: 
-        #log.error(f"Error running `git checkout {tag}`: {e}")
+    except Exception as e:
+        # log.error(f"Error running `git checkout {tag}`: {e}")
         raise Exception(f"Error running `git checkout {tag}`: {e}")
     mismatch = []
 
@@ -224,15 +238,16 @@ def find_mismatch_for_tag(repo, tag, base_path, repo_path):
             continue
         log.debug("analysing files...")
 
-        repo_files = list(filter(
-            lambda x: os.path.isfile(os.path.join(repo_root, x)),
-            os.listdir(repo_root)
-        ))
+        repo_files = list(
+            filter(
+                lambda x: os.path.isfile(os.path.join(repo_root, x)),
+                os.listdir(repo_root),
+            )
+        )
 
         for file_name in repo_files:
             if file_name not in files:  # ignore files we don't have in the distribution
                 continue
-            log.debug(f"Comparing {os.path.join(repo_root, file_name)} and {os.path.join(root, file_name)}")
             repo_hash, repo_content = get_file_hash(os.path.join(repo_root, file_name))
             pkg_hash, pkg_content = get_file_hash(os.path.join(root, file_name))
 
@@ -243,7 +258,7 @@ def find_mismatch_for_tag(repo, tag, base_path, repo_path):
                 res = {
                     "file": os.path.join(relative_path, file_name),
                     "repo_sha256": repo_hash,
-                    "pkg_sha256": pkg_hash
+                    "pkg_sha256": pkg_hash,
                 }
                 mismatch.append(res)
 
@@ -254,7 +269,7 @@ def find_suitable_tags_in_list(tags, version):
     """Find tags that match the given version"""
     tag_candidates = []
     for tag_name in tags:
-        normalized_tag = tag_name.lstrip('refs/tags/').lstrip('v').lstrip('release-')
+        normalized_tag = tag_name.lstrip("refs/tags/").lstrip("v").lstrip("release-")
         if normalized_tag and normalized_tag in version:
             tag_candidates.append(tag_name)
     return tag_candidates
@@ -262,7 +277,7 @@ def find_suitable_tags_in_list(tags, version):
 
 def find_suitable_tags(repo, version):
     """Find suitable Git tags for the given version"""
-    tags_regex = re.compile(r'^refs/tags/(.*)')
+    tags_regex = re.compile(r"^refs/tags/(.*)")
     tags = []
     for ref in repo.references:
         match = tags_regex.match(ref)
@@ -285,19 +300,27 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
     * Does not run in parallel, so can be slow for large code bases
     * Only compares decompressed JAR contents, not decompiled Java source
     """
+
     RULE_NAME = "repository_integrity_mismatch"
 
     def __init__(self):
         super().__init__()
 
-    def detect(self, package_info, path: Optional[str] = None, name: Optional[str] = None,
-               version: Optional[str] = None) -> tuple[bool, str]:
+    def detect(
+        self,
+        package_info,
+        path: Optional[str] = None,
+        name: Optional[str] = None,
+        version: Optional[str] = None,
+    ) -> tuple[bool, str]:
         if name is None:
             raise Exception("Detector needs the name of the package")
         if path is None:
             raise Exception("Detector needs the path of the package")
 
-        log.debug(f"Running repository integrity mismatch heuristic on Maven package {name} version {version}")
+        log.debug(
+            f"Running repository integrity mismatch heuristic on Maven package {name} version {version}"
+        )
 
         # Extract POM path from package_info
         pom_path = package_info.get("path", {}).get("pom_path")
@@ -311,7 +334,9 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
             return False, "Could not find any GitHub url in the project's POM"
 
         # Find the best GitHub URL
-        github_url = find_best_github_candidate((github_urls, best_github_candidate), name)
+        github_url = find_best_github_candidate(
+            (github_urls, best_github_candidate), name
+        )
         if github_url is None:
             log.warning("Could not find a good GitHub url in the project's POM")
             return False, "Could not find a good GitHub url in the project's POM"
@@ -329,16 +354,21 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
             raise Exception("no current scanning directory")
 
         repo_path = os.path.join(tmp_dir, "sources", name)
-        log.debug("Cloning the repo...")
+        log.debug(f"Cloning the repo... into {repo_path}")
         try:
             repo = pygit2.clone_repository(url=github_url, path=repo_path)
             log.debug("Successfully cloned github repo")
+            log.debug(os.listdir(repo_path))
         except pygit2.GitError as git_error:
             # Handle generic Git-related errors
-            raise Exception(f"Error while cloning repository {str(git_error)} with github url {github_url}")
+            raise Exception(
+                f"Error while cloning repository {str(git_error)} with github url {github_url}"
+            )
         except Exception as e:
             # Catch any other unexpected exceptions
-            raise Exception(f"An unexpected error occurred: {str(e)}.  github url {github_url}")
+            raise Exception(
+                f"An unexpected error occurred: {str(e)}.  github url {github_url}"
+            )
 
         tag_candidates = find_suitable_tags(repo, version)
         if len(tag_candidates) == 0:
@@ -353,11 +383,14 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
         base_path = package_info.get("path", {}).get("decompressed_path")
         if not base_path or not os.path.exists(base_path):
             return False, "Could not find decompressed package contents"
+        log.debug(f"base path: {base_path}: {os.listdir(base_path)}")
         log.debug("look for mismatches")
-        mismatch = find_mismatch_for_tag(repo, target_tag, base_path, repo_path)
-        message = "\n".join(map(
-            lambda x: "* " + x["file"],
-            mismatch
-        ))
-        return len(mismatch) > 0, f"Some files present in the package are different from the ones on GitHub for " \
-                                  f"the same version of the package: \n{message}"
+        _, artifact_id = name.split(":")
+        repo_path_final = os.path.join(repo_path, artifact_id, "src")
+        mismatch = find_mismatch_for_tag(repo, target_tag, base_path, repo_path_final)
+        message = "\n".join(map(lambda x: "* " + x["file"], mismatch))
+        return (
+            len(mismatch) > 0,
+            f"Some files present in the package are different from the ones on GitHub for "
+            f"the same version of the package: \n{message}",
+        )
