@@ -209,50 +209,26 @@ def find_github_candidates_from_pom(pom_path) -> Tuple[set[str], Optional[str]]:
 
 
 # Maven-specific excluded extensions and patterns
-EXCLUDED_EXTENSIONS = [".md", ".txt", ".rst", ".class", ".jar", ".war"]
-EXCLUDED_PATTERNS = ["target/", ".*", "*.iml", "*.ipr", "*.iws"]
+EXCLUDED_EXTENSIONS = [".md", ".txt", ".rst", "mf", ".properties"]
+EXCLUDED_PATTERNS = ["META-INF/versions"]
 
 
-def exclude_result(file_name, repo_root, pkg_root):
+def exclude_result(file_name: str) -> bool:
     """
     This method filters out some results that are known false positives for Maven:
     * if the file is a documentation file (based on its extension)
-    * if the file is a compiled artifact (.class, .jar, etc.)
-    * if the file is in target directory or other build artifacts
-    * if the file is IDE-specific configuration
+    * if the file is in version directory
     """
+    if not file_name:
+        return False
+
     for extension in EXCLUDED_EXTENSIONS:
-        if file_name.endswith(extension):
+        if file_name.lower().endswith(extension):
             return True
 
     for pattern in EXCLUDED_PATTERNS:
-        if pattern.startswith("*") and file_name.endswith(pattern[1:]):
+        if file_name.lower().startswith(pattern.lower()):
             return True
-        elif pattern == ".*" and file_name.startswith("."):
-            return True
-        elif file_name.startswith(pattern):
-            return True
-
-    # Maven-specific: exclude pom.xml differences if they are just formatting
-    if file_name == "pom.xml":
-        try:
-            # Parse both POM files and compare their canonical form
-            repo_tree = ET.parse(os.path.join(repo_root, file_name))
-            pkg_tree = ET.parse(os.path.join(pkg_root, file_name))
-
-            # Simple comparison - could be made more sophisticated
-            repo_str = ET.tostring(repo_tree.getroot(), encoding="unicode")
-            pkg_str = ET.tostring(pkg_tree.getroot(), encoding="unicode")
-
-            # Normalize whitespace for comparison
-            repo_normalized = " ".join(repo_str.split())
-            pkg_normalized = " ".join(pkg_str.split())
-
-            if repo_normalized == pkg_normalized:
-                return True
-        except Exception:
-            # If parsing fails, continue with hash comparison
-            pass
 
     return False
 
@@ -297,10 +273,19 @@ def find_non_java_files_mismatches(
         sources_root = os.path.join(sources_path, decompressed_rel_path)
 
         if not os.path.exists(sources_root):
-            log.debug(
-                f"Path does not exist {sources_root}, additional file (maybe dangerous)!"
+            if exclude_result(decompressed_rel_path):
+                continue
+            log.warning(
+                f"File {decompressed_rel_path} does not exist in sources, additional files in built package!"
             )
-            # that is dangerous ... add mismatch
+            # additional files in the built package!!
+            res = {
+                "decompressed_built_file": os.path.join(
+                    decompressed_root, decompressed_rel_path
+                ),
+                "source_file": "None",
+            }
+            mismatch.append(res)
             continue
 
         # get the files in the respective dir in sources
@@ -316,6 +301,9 @@ def find_non_java_files_mismatches(
                 # do not compare hashes of sources .java with compiled .class!
                 continue
 
+            if exclude_result(decompressed_f):
+                continue
+
             if decompressed_f not in source_files:
                 # if decompressed project has additional files not present in the public sources-> dangerous !
                 # danger || add mismatch
@@ -326,7 +314,7 @@ def find_non_java_files_mismatches(
                     "decompressed_built_file": os.path.join(
                         decompressed_rel_path, decompressed_f
                     ),
-                    "source_file": None,
+                    "source_file": "None",
                 }
                 mismatch.append(res)
                 continue
@@ -339,9 +327,6 @@ def find_non_java_files_mismatches(
             )
 
             if decompressed_hash != source_hash:
-                if exclude_result(decompressed_f, sources_root, decompressed_root):
-                    continue
-
                 res = {
                     "decompressed_built_file": os.path.join(
                         decompressed_rel_path, decompressed_f
@@ -455,7 +440,7 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
         )
         message = "\n".join(
             map(
-                lambda x: "* "
+                lambda x: "\t* "
                 + "Decompressed built Maven package: "
                 + x["decompressed_built_file"]
                 + " and "
