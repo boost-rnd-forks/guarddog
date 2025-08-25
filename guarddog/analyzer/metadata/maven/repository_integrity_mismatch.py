@@ -16,6 +16,7 @@ import pygit2  # type: ignore
 import urllib3.util
 
 from guarddog.analyzer.metadata.repository_integrity_mismatch import IntegrityMismatch
+from guarddog.utils.archives import extract_jar
 
 GH_REPO_REGEX = r"(?:https?://)?(?:www\.)?github\.com/(?:[\w-]+/)(?:[\w-]+)"
 GH_REPO_OWNER_REGEX = r"(?:https?://)?(?:www\.)?github\.com/([\w-]+)/([\w-]+)"
@@ -26,6 +27,45 @@ MAVEN_CENTRAL_BASE_URL = "https://repo1.maven.org/maven2"
 TRUSTED_DOMAINS = {"repo1.maven.org", "search.maven.org"}
 
 log = logging.getLogger("guarddog")
+
+
+def download_packages_sources(
+    dest_dir: str, group_id: str, artifact_id: str, version: str
+) -> str:
+    """
+    Get the package sources jar from Maven Central
+    Returns:
+        - path to the downloaded .jar of sources files
+    """
+    log.debug("Downloading sources...")
+    group_path = group_id.replace(".", "/")
+    base_url = f"{MAVEN_CENTRAL_BASE_URL}/{group_path}/{artifact_id}/{version}"
+    jar_sources_url = f"{base_url}/{artifact_id}-{version}-sources.jar"
+    os.makedirs(dest_dir, exist_ok=True)
+    jar_sources_path = os.path.join(dest_dir, f"{artifact_id}-{version}-sources.jar")
+    try:
+        r = requests.get(jar_sources_url, stream=True, timeout=10, verify=True)
+        final_url = r.url
+        parsed = urlparse(final_url)
+        if parsed.hostname not in TRUSTED_DOMAINS:
+            raise ValueError(
+                f"Unsafe redirect detected: {final_url} not in trusted domains"
+            )
+
+        if r.status_code != 200:
+            raise Exception(
+                f"Failed to download Maven package from {jar_sources_url} (status {r.status_code})"
+            )
+
+        with open(jar_sources_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+        log.debug("successfully retrieved sources!")
+    except Exception as e:
+        raise Exception(f"Error retrieving Maven package sources: {e}")
+
+    log.debug(f"Downloaded JAR sources to: {jar_sources_path}")
+    return jar_sources_path
 
 
 def extract_owner_and_repo(url) -> Tuple[Optional[str], Optional[str]]:
@@ -217,52 +257,114 @@ def exclude_result(file_name, repo_root, pkg_root):
     return False
 
 
-def find_mismatch_for_tag(repo, tag, base_path, repo_path):
-    """Find mismatched files between repository tag and package"""
-    log.debug(f"checkout {tag}")
-    try:
-        repo.checkout(tag)
-        log.debug("checkout successful!!!")
-    except Exception as e:
-        # log.error(f"Error running `git checkout {tag}`: {e}")
-        raise Exception(f"Error running `git checkout {tag}`: {e}")
+def find_non_java_files_mismatches(
+    decompressed_path: str, sources_path: str
+) -> list[dict]:
+    """
+    Find the files that differ between the two provided java repositories:
+    The decompressed built jar and the corresponding java sources from Maven.
+
+    Analyses non java files only: computes hash of each file
+
+    If a file is present in the decompressed_path but is not present in the
+    public `source_path`: it is considered dangerous!
+
+    The opposite is ignored: if a file in the public `sources_path` is missing in
+    the build package `decompressed_path`, it is considered fine.
+
+    Args:
+        - `decompressed_path` (str): path of the sketchy project. Should not have additional files
+        - `sources_path` (str): trusted path, reference
+
+    Returns:
+        mismatchs (list[dict]):
+            - "decompressed_built_file": decompressed_file_path,
+            - "source_file" source_file_path
+    """
+    if not decompressed_path or not os.path.isdir(decompressed_path):
+        raise FileExistsError(
+            f"Invalid project path provided {decompressed_path}. No repo comparison."
+        )
+    if not sources_path or not os.path.isdir(sources_path):
+        raise FileExistsError(
+            f"Invalid project path provided {sources_path}. No repo comparison."
+        )
+
+    log.debug("Looking for non java files mismatches...")
     mismatch = []
+    for decompressed_root, dir, decompressed_files in os.walk(decompressed_path):
+        decompressed_rel_path = os.path.relpath(decompressed_root, decompressed_path)
+        sources_root = os.path.join(sources_path, decompressed_rel_path)
 
-    for root, dirs, files in os.walk(base_path):
-        relative_path = os.path.relpath(root, base_path)
-        repo_root = os.path.join(repo_path, relative_path)
-        log.debug(f"repo root: {repo_root}")
-
-        if not os.path.exists(repo_root):
-            log.debug("Path does not exist")
+        if not os.path.exists(sources_root):
+            log.debug(
+                f"Path does not exist {sources_root}, additional file (maybe dangerous)!"
+            )
+            # that is dangerous ... add mismatch
             continue
-        log.debug("analysing files...")
 
-        repo_files = list(
+        # get the files in the respective dir in sources
+        source_files = list(
             filter(
-                lambda x: os.path.isfile(os.path.join(repo_root, x)),
-                os.listdir(repo_root),
+                lambda x: os.path.isfile(os.path.join(sources_root, x)),
+                os.listdir(sources_root),
             )
         )
 
-        for file_name in repo_files:
-            if file_name not in files:  # ignore files we don't have in the distribution
+        for decompressed_f in decompressed_files:
+            if decompressed_f.endswith(".class"):
+                # do not compare hashes of sources .java with compiled .class!
                 continue
-            repo_hash, repo_content = get_file_hash(os.path.join(repo_root, file_name))
-            pkg_hash, pkg_content = get_file_hash(os.path.join(root, file_name))
 
-            if repo_hash != pkg_hash:
-                if exclude_result(file_name, repo_root, root):
+            if decompressed_f not in source_files:
+                # if decompressed project has additional files not present in the public sources-> dangerous !
+                # danger || add mismatch
+                log.warning(
+                    f"The file {decompressed_f} is in the built project but not in the public sources!"
+                )
+                res = {
+                    "decompressed_built_file": os.path.join(
+                        decompressed_rel_path, decompressed_f
+                    ),
+                    "source_file": None,
+                }
+                mismatch.append(res)
+                continue
+
+            decompressed_hash, d_content = get_file_hash(
+                os.path.join(decompressed_root, decompressed_f)
+            )
+            source_hash, s_content = get_file_hash(
+                os.path.join(sources_root, decompressed_f)
+            )
+
+            if decompressed_hash != source_hash:
+                if exclude_result(decompressed_f, sources_root, decompressed_root):
                     continue
 
                 res = {
-                    "file": os.path.join(relative_path, file_name),
-                    "repo_sha256": repo_hash,
-                    "pkg_sha256": pkg_hash,
+                    "decompressed_built_file": os.path.join(
+                        decompressed_rel_path, decompressed_f
+                    ),
+                    "source_file": os.path.join(sources_root, decompressed_f),
                 }
                 mismatch.append(res)
 
     return mismatch
+
+
+def find_java_files_mismatch(decompressed_path: str, sources_path: str) -> list[dict]:
+    """
+    Analyses the decompressed built jar `decompressed_path` and the corresponding java sources `sources_path` to find incoherences regarding java files (.java and .class).
+
+    (Since it is not possible to compare .class hashes with the corresponding .java file, we only verify the files names and location.)
+
+    Returns:
+        mismatchs (list[dict]):
+            - "file": mismatch_decompressed_file_path,
+            - "decompressed_sha256" decompressed_file_hash (sha256)
+            - "maven_sources_sha256": source_file_hash (sha256)
+    """
 
 
 def find_suitable_tags_in_list(tags, version):
@@ -321,29 +423,6 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
         log.debug(
             f"Running repository integrity mismatch heuristic on Maven package {name} version {version}"
         )
-
-        # Extract POM path from package_info
-        pom_path = package_info.get("path", {}).get("pom_path")
-        if not pom_path or not os.path.exists(pom_path):
-            return False, "Could not find POM file for the package"
-
-        # Extract GitHub URLs from POM
-        github_urls, best_github_candidate = find_github_candidates_from_pom(pom_path)
-        log.debug(f"Found a github url: {github_urls}")
-        if len(github_urls) == 0:
-            return False, "Could not find any GitHub url in the project's POM"
-
-        # Find the best GitHub URL
-        github_url = find_best_github_candidate(
-            (github_urls, best_github_candidate), name
-        )
-        if github_url is None:
-            log.warning("Could not find a good GitHub url in the project's POM")
-            return False, "Could not find a good GitHub url in the project's POM"
-
-        log.debug(f"Using GitHub URL {github_url}")
-
-        # Get version from package_info if not provided
         if version is None:
             version = package_info.get("info", {}).get("version")
         if version is None:
@@ -353,44 +432,40 @@ class MavenIntegrityMismatchDetector(IntegrityMismatch):
         if tmp_dir is None:
             raise Exception("no current scanning directory")
 
-        repo_path = os.path.join(tmp_dir, "sources", name)
-        log.debug(f"Cloning the repo... into {repo_path}")
-        try:
-            repo = pygit2.clone_repository(url=github_url, path=repo_path)
-            log.debug("Successfully cloned github repo")
-            log.debug(os.listdir(repo_path))
-        except pygit2.GitError as git_error:
-            # Handle generic Git-related errors
-            raise Exception(
-                f"Error while cloning repository {str(git_error)} with github url {github_url}"
-            )
-        except Exception as e:
-            # Catch any other unexpected exceptions
-            raise Exception(
-                f"An unexpected error occurred: {str(e)}.  github url {github_url}"
-            )
+        group_id, artifact_id = name.split(":")
+        jar_sources_path: str = download_packages_sources(
+            tmp_dir, group_id, artifact_id, version
+        )
+        if not jar_sources_path or not os.path.exists(jar_sources_path):
+            return False, "Could not find the package sources"
 
-        tag_candidates = find_suitable_tags(repo, version)
-        if len(tag_candidates) == 0:
-            return False, "Could not find any suitable tag in repository"
-        log.debug(f"Tags : {tag_candidates}")
-        target_tag = None
-        # TODO: this one is a bit weak. let's find something stronger - maybe use the closest string?
-        for tag in tag_candidates:
-            target_tag = tag
+        sources_path = os.path.join(tmp_dir, "sources")
+        extract_jar(jar_sources_path, sources_path)
+        if not sources_path or not os.path.isdir(sources_path):
+            return False, "Could not decompress the package sources"
 
-        # Use decompressed path from Maven scanner
-        base_path = package_info.get("path", {}).get("decompressed_path")
-        if not base_path or not os.path.exists(base_path):
+        decompressed_path = package_info.get("path", {}).get("decompressed_path")
+        if not decompressed_path or not os.path.exists(decompressed_path):
             return False, "Could not find decompressed package contents"
-        log.debug(f"base path: {base_path}: {os.listdir(base_path)}")
-        log.debug("look for mismatches")
-        _, artifact_id = name.split(":")
-        repo_path_final = os.path.join(repo_path, artifact_id, "src")
-        mismatch = find_mismatch_for_tag(repo, target_tag, base_path, repo_path_final)
-        message = "\n".join(map(lambda x: "* " + x["file"], mismatch))
+
+        log.debug("Looking for mismatches...")
+
+        non_java_mismatch: list[dict] = find_non_java_files_mismatches(
+            decompressed_path, sources_path
+        )
+        message = "\n".join(
+            map(
+                lambda x: "* "
+                + "Decompressed built Maven package: "
+                + x["decompressed_built_file"]
+                + " and "
+                + "decompressed Maven corresponding sources: "
+                + x["source_file"],
+                non_java_mismatch,
+            )
+        )
         return (
-            len(mismatch) > 0,
-            f"Some files present in the package are different from the ones on GitHub for "
+            len(non_java_mismatch) > 0,
+            f"Some files present in the package are different from the ones in the corresponding Maven sources for "
             f"the same version of the package: \n{message}",
         )

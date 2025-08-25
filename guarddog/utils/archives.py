@@ -20,6 +20,7 @@ def is_supported_archive(path: str) -> bool:
         bool: Represents the decision reached for the file
 
     """
+
     def is_tar_archive(path: str) -> bool:
         tar_exts = [".bz2", ".bzip2", ".gz", ".gzip", ".tgz", ".xz"]
 
@@ -68,7 +69,7 @@ def safe_extract(source_archive: str, target_directory: str) -> None:
         recurse_add_perms(target_directory)
 
     elif zipfile.is_zipfile(source_archive):
-        with zipfile.ZipFile(source_archive, 'r') as zip:
+        with zipfile.ZipFile(source_archive, "r") as zip:
             for file in zip.namelist():
                 # Note: zip.extract cleans up any malicious file name
                 # such as directory traversal attempts This is not the
@@ -76,3 +77,28 @@ def safe_extract(source_archive: str, target_directory: str) -> None:
                 zip.extract(file, path=os.path.join(target_directory, file))
     else:
         raise ValueError(f"unsupported archive extension: {source_archive}")
+
+
+def extract_jar(jar_path: str, output_dir: str):
+    """
+    Extract a jar archive file with zipfile
+    - `jar_path` (str): path to the jar to extract
+    - `output_dir` (str): directory to decompress the jar to
+    """
+    with zipfile.ZipFile(jar_path, "r") as jar:
+        log.debug("Extracting JAR package...")
+        output_dir_abs = os.path.abspath(output_dir)
+        for file in jar.namelist():
+            # resolve paths and removes ../
+            safe_path = os.path.abspath(os.path.join(output_dir, file))
+            # ensure safe_path in the output dir
+            if os.path.commonpath([output_dir_abs, safe_path]) != output_dir_abs:
+                log.warning(f"Skipping potentially unsafe file: {file}")
+                continue
+            if file.endswith("/"):  # It's a directory
+                os.makedirs(safe_path, exist_ok=True)
+                continue
+            os.makedirs(os.path.dirname(safe_path), exist_ok=True)
+            with open(safe_path, "wb") as f:
+                f.write(jar.read(file))
+    log.debug("JAR file successfully extracted!")
